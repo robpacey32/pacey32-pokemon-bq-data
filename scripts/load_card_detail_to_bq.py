@@ -175,13 +175,50 @@ def load_to_bigquery(df):
     job.result()
     print(f"Loaded {len(df)} rows to {table_ref}", flush=True)
 
+def align_dataframe_types(df):
+    # columns that BigQuery schema expects as STRING
+    string_cols = [
+        "card_id", "local_id", "name", "image_url", "category",
+        "illustrator", "rarity", "hp", "set_id", "set_name",
+        "set_logo", "set_symbol", "series_id", "series_name",
+        "types_json", "supertypes_json", "subtypes_json",
+        "abilities_json", "attacks_json", "weaknesses_json",
+        "resistances_json", "description", "dex_id_json", "stage",
+        "level", "suffix", "trainer_type", "regulation_mark",
+        "variants_json", "legal_json", "third_party_json",
+        "pricing_json", "raw_json", "source_language"
+    ]
+
+    for col in string_cols:
+        if col in df.columns:
+            df[col] = df[col].astype("string")
+
+    # columns that BigQuery schema expects as INT64
+    int_cols = ["cardmarket_id", "tcgplayer_id", "retreat"]
+    for col in int_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
+
+    # columns that BigQuery schema expects as TIMESTAMP
+    if "load_timestamp" in df.columns:
+        df["load_timestamp"] = pd.to_datetime(df["load_timestamp"], utc=True)
+
+    return df
+
 
 def main():
     df = get_card_detail_df(limit=None)
-    print(df.head())
-    print(df.shape)
-    load_to_bigquery(df)
 
+    print(df.head(), flush=True)
+    print(df.shape, flush=True)
+    print(df.dtypes, flush=True)
+
+    df = align_dataframe_types(df)
+
+    print("Dtypes after alignment:", flush=True)
+    print(df.dtypes, flush=True)
+
+    load_to_bigquery(df)
 
 if __name__ == "__main__":
     main()
