@@ -29,4 +29,4 @@ jobs:
           pip install pandas requests google-cloud-bigquery pyarrow db-dtypes
 
       - name: Run loader
-        run: python scripts/load_card_detail_to_bq.py
+        run: python -u scripts/load_card_detail_to_bq.py
