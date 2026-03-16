@@ -207,9 +207,8 @@ def align_dataframe_types(df):
 
 
 def main():
-    #df = get_card_detail_df(limit=None)
-    df = get_card_detail_df(limit=200)
-
+    df = get_card_detail_df(limit=None)
+    
     print(df.head(), flush=True)
     print(df.shape, flush=True)
     print(df.dtypes, flush=True)
