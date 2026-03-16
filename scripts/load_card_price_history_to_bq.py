@@ -60,6 +60,10 @@ def extract_price_row(card, snapshot_ts):
     cardmarket = pricing.get("cardmarket") or {}
     tcgplayer = pricing.get("tcgplayer") or {}
 
+    holofoil = tcgplayer.get("holofoil") or {}
+    normal = tcgplayer.get("normal") or {}
+    reverse_holofoil = tcgplayer.get("reverseHolofoil") or {}
+
     return {
         "card_id": card.get("id"),
         "set_id": safe_get(card, "set", "id"),
@@ -69,29 +73,48 @@ def extract_price_row(card, snapshot_ts):
         "snapshot_timestamp": snapshot_ts,
         "source_language": LANGUAGE,
 
-        # top-level raw pricing JSON
         "pricing_json": to_json(pricing),
 
-        # cardmarket block
-        "cardmarket_updated_at": cardmarket.get("updatedAt"),
-        "cardmarket_url": cardmarket.get("url"),
-        "cardmarket_avg_sell_price": cardmarket.get("avgSellPrice"),
-        "cardmarket_low_price": cardmarket.get("lowPrice"),
-        "cardmarket_trend_price": cardmarket.get("trendPrice"),
-        "cardmarket_reverse_holo_sell": cardmarket.get("reverseHoloSell"),
-        "cardmarket_reverse_holo_low": cardmarket.get("reverseHoloLow"),
-        "cardmarket_reverse_holo_trend": cardmarket.get("reverseHoloTrend"),
-        "cardmarket_holo_sell": cardmarket.get("holoSell"),
-        "cardmarket_holo_low": cardmarket.get("holoLow"),
-        "cardmarket_holo_trend": cardmarket.get("holoTrend"),
+        # Cardmarket - correct keys
+        "cardmarket_updated_at": cardmarket.get("updated"),
+        "cardmarket_id_product": cardmarket.get("idProduct"),
+        "cardmarket_unit": cardmarket.get("unit"),
+        "cardmarket_avg": cardmarket.get("avg"),
+        "cardmarket_low": cardmarket.get("low"),
+        "cardmarket_trend": cardmarket.get("trend"),
+        "cardmarket_avg_1": cardmarket.get("avg1"),
+        "cardmarket_avg_7": cardmarket.get("avg7"),
+        "cardmarket_avg_30": cardmarket.get("avg30"),
+        "cardmarket_avg_holo": cardmarket.get("avg-holo"),
+        "cardmarket_low_holo": cardmarket.get("low-holo"),
+        "cardmarket_trend_holo": cardmarket.get("trend-holo"),
+        "cardmarket_avg_1_holo": cardmarket.get("avg1-holo"),
+        "cardmarket_avg_7_holo": cardmarket.get("avg7-holo"),
+        "cardmarket_avg_30_holo": cardmarket.get("avg30-holo"),
 
-        # tcgplayer block as raw JSON because nested shapes can vary
-        "tcgplayer_updated_at": tcgplayer.get("updatedAt"),
-        "tcgplayer_url": tcgplayer.get("url"),
-        "tcgplayer_prices_json": to_json(tcgplayer.get("prices")),
+        # TCGplayer - correct structure
+        "tcgplayer_updated_at": tcgplayer.get("updated"),
+        "tcgplayer_unit": tcgplayer.get("unit"),
 
-        # provenance
-        "load_timestamp": datetime.now(timezone.utc).isoformat(),
+        "tcgplayer_normal_market_price": normal.get("marketPrice"),
+        "tcgplayer_normal_low_price": normal.get("lowPrice"),
+        "tcgplayer_normal_mid_price": normal.get("midPrice"),
+        "tcgplayer_normal_high_price": normal.get("highPrice"),
+        "tcgplayer_normal_direct_low_price": normal.get("directLowPrice"),
+
+        "tcgplayer_holofoil_market_price": holofoil.get("marketPrice"),
+        "tcgplayer_holofoil_low_price": holofoil.get("lowPrice"),
+        "tcgplayer_holofoil_mid_price": holofoil.get("midPrice"),
+        "tcgplayer_holofoil_high_price": holofoil.get("highPrice"),
+        "tcgplayer_holofoil_direct_low_price": holofoil.get("directLowPrice"),
+
+        "tcgplayer_reverse_holofoil_market_price": reverse_holofoil.get("marketPrice"),
+        "tcgplayer_reverse_holofoil_low_price": reverse_holofoil.get("lowPrice"),
+        "tcgplayer_reverse_holofoil_mid_price": reverse_holofoil.get("midPrice"),
+        "tcgplayer_reverse_holofoil_high_price": reverse_holofoil.get("highPrice"),
+        "tcgplayer_reverse_holofoil_direct_low_price": reverse_holofoil.get("directLowPrice"),
+
+        "load_timestamp": pd.Timestamp.now(tz="UTC"),
     }
 
 
