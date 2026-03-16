@@ -172,11 +172,62 @@ def load_to_bigquery(df):
     job.result()
     print(f"Loaded {len(df)} pricing rows to {table_ref}", flush=True)
 
+def align_price_dataframe_types(df):
+    string_cols = [
+        "card_id",
+        "set_id",
+        "set_name",
+        "local_id",
+        "name",
+        "source_language",
+        "pricing_json",
+        "cardmarket_updated_at",
+        "cardmarket_url",
+        "tcgplayer_updated_at",
+        "tcgplayer_url",
+        "tcgplayer_prices_json",
+    ]
+
+    for col in string_cols:
+        if col in df.columns:
+            df[col] = df[col].astype("string")
+
+    float_cols = [
+        "cardmarket_avg_sell_price",
+        "cardmarket_low_price",
+        "cardmarket_trend_price",
+        "cardmarket_reverse_holo_sell",
+        "cardmarket_reverse_holo_low",
+        "cardmarket_reverse_holo_trend",
+        "cardmarket_holo_sell",
+        "cardmarket_holo_low",
+        "cardmarket_holo_trend",
+    ]
+
+    for col in float_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    timestamp_cols = [
+        "snapshot_timestamp",
+        "load_timestamp",
+    ]
+
+    for col in timestamp_cols:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], utc=True, errors="coerce")
+
+    return df
 
 def main():
-    df = get_card_price_df(limit=None)
-    print(df.head(), flush=True)
-    print(df.shape, flush=True)
+def main():
+    df = get_card_price_df(limit=100)
+
+    df = align_price_dataframe_types(df)
+
+    print("Dtypes after alignment:", flush=True)
+    print(df.dtypes, flush=True)
+
     load_to_bigquery(df)
 
 
