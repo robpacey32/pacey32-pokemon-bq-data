@@ -1,4 +1,4 @@
-name: Load Pokemon Card Price History to BigQuery
+name: 2. Card Price History
 
 on:
   workflow_dispatch:
