@@ -220,7 +220,6 @@ def align_price_dataframe_types(df):
     return df
 
 def main():
-def main():
     df = get_card_price_df(limit=100)
 
     df = align_price_dataframe_types(df)
