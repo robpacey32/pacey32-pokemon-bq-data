@@ -110,7 +110,7 @@ def build_card_rows(cards_brief, limit=None):
         rows.append(row)
 
         if i % 100 == 0 or i == total:
-            print(f"Fetched {i}/{total} cards")
+            print(f"Fetched {i}/{total} cards", flush=True)
 
         time.sleep(0.03)
 
@@ -173,7 +173,7 @@ def load_to_bigquery(df):
 
     job = client.load_table_from_dataframe(df, table_ref, job_config=job_config)
     job.result()
-    print(f"Loaded {len(df)} rows to {table_ref}")
+    print(f"Loaded {len(df)} rows to {table_ref}", flush=True)
 
 
 def main():
