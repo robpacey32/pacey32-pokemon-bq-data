@@ -1,6 +1,11 @@
-pandas
-google-cloud-bigquery
 google-cloud-storage
-pymongo
-requests
 python-dotenv
+pandas
+requests
+google-cloud-bigquery
+pyarrow
+db-dtypes
+pandas-gbq
+pymongo
+streamlit
+bcrypt
