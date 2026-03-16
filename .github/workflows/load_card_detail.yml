@@ -1,4 +1,4 @@
-name: Load Pokemon Card Detail to BigQuery
+name: 1. Card Detail
 
 on:
   workflow_dispatch:
