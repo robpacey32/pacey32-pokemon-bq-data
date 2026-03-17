@@ -21,7 +21,7 @@ if st.session_state.user is None:
                 st.session_state.user = {
                     "username": user["username"],
                     "email": user["email"],
-                    "user_id": str(user["_id"]),
+                    "user_id": user["username"],
                 }
                 st.success("Logged in")
                 st.rerun()
