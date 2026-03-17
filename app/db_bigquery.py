@@ -1,9 +1,18 @@
+import os
+import json
 import pandas as pd
 from google.cloud import bigquery
+from google.oauth2 import service_account
 
 PROJECT_ID = "pokemon-pacey32-github"
 
-client = bigquery.Client(project=PROJECT_ID)
+creds_info = json.loads(os.environ["GOOGLE_CLOUD_JSON"])
+credentials = service_account.Credentials.from_service_account_info(creds_info)
+
+client = bigquery.Client(
+    project=PROJECT_ID,
+    credentials=credentials
+)
 
 
 def run_query(sql: str) -> pd.DataFrame:
@@ -23,24 +32,20 @@ def get_series_list() -> list:
 
 
 def get_set_list(series_name: str | None = None) -> list:
-    where_clause = ""
+    filters = ["set_name IS NOT NULL"]
+
     if series_name and series_name != "All":
         safe_series = series_name.replace("'", "\\'")
-        where_clause = f"WHERE series_name = '{safe_series}'"
+        filters.append(f"series_name = '{safe_series}'")
+
+    where_clause = "WHERE " + " AND ".join(filters)
 
     sql = f"""
     SELECT DISTINCT set_name
     FROM `pokemon-pacey32-github.pokemonApp.card_master_vw`
     {where_clause}
-    AND set_name IS NOT NULL
-    ORDER BY set_name
-    """ if where_clause else """
-    SELECT DISTINCT set_name
-    FROM `pokemon-pacey32-github.pokemonApp.card_master_vw`
-    WHERE set_name IS NOT NULL
     ORDER BY set_name
     """
-
     df = run_query(sql)
     return df["set_name"].dropna().tolist()
 
