@@ -6,7 +6,7 @@ from google.oauth2 import service_account
 
 PROJECT_ID = "pokemon-pacey32-github"
 
-creds_info = json.loads(os.environ["GOOGLE_CLOUD_JSON"])
+creds_info = json.loads(os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
 credentials = service_account.Credentials.from_service_account_info(creds_info)
 
 client = bigquery.Client(
