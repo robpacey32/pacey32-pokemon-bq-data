@@ -1,4 +1,4 @@
-name: Load Currency Rates to BigQuery
+name: 4. Load Currency Rates to BigQuery
 
 on:
   workflow_dispatch:
