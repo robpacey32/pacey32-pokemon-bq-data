@@ -6,6 +6,9 @@ st.set_page_config(page_title="Pokemon Collection App", layout="wide")
 if "user" not in st.session_state:
     st.session_state.user = None
 
+if "display_currency" not in st.session_state:
+    st.session_state.display_currency = "GBP"
+
 st.title("Pokemon Collection App")
 
 if st.session_state.user is None:
@@ -23,6 +26,8 @@ if st.session_state.user is None:
                     "email": user["email"],
                     "user_id": user["username"],
                 }
+                if "display_currency" not in st.session_state:
+                    st.session_state.display_currency = "GBP"
                 st.success("Logged in")
                 st.rerun()
             else:
@@ -42,6 +47,7 @@ if st.session_state.user is None:
 
 else:
     st.write(f"Logged in as **{st.session_state.user['username']}**")
+    st.write(f"Display currency: **{st.session_state.display_currency}**")
 
     if st.button("Logout"):
         st.session_state.user = None

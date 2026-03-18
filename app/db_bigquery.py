@@ -96,3 +96,21 @@ def get_card_master(
     """
 
     return run_query(sql)
+
+def get_fx_rate(base_currency: str, target_currency: str) -> float:
+    if base_currency == target_currency:
+        return 1.0
+
+    sql = f"""
+    SELECT exchange_rate
+    FROM `pokemon-pacey32-github.pokemonApp.currency_rates_latest_vw`
+    WHERE base_currency = '{base_currency}'
+      AND target_currency = '{target_currency}'
+    LIMIT 1
+    """
+    df = run_query(sql)
+
+    if df.empty:
+        return 1.0
+
+    return float(df.iloc[0]["exchange_rate"])
