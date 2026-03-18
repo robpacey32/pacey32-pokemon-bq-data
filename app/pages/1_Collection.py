@@ -65,6 +65,14 @@ st.write(f"Showing **{len(df)}** cards")
 # -------------------------
 # DISPLAY CARDS
 # -------------------------
+currency_symbols = {
+    "GBP": "£",
+    "EUR": "€",
+    "USD": "$"
+}
+
+symbol = currency_symbols.get(display_currency, display_currency)
+
 for _, row in df.iterrows():
     card_id = row["card_id"]
     current_owned = card_id in owned_ids
@@ -79,12 +87,13 @@ for _, row in df.iterrows():
             trend_value_display = None
 
     if trend_value_display is not None:
-        value_text = f"{display_currency} {trend_value_display:,.2f}"
+        value_text = f"CardMarket Price: {symbol}{trend_value_display:,.2f}"
     else:
-        value_text = "N/A"
+        value_text = "CardMarket Price: N/A"
 
-    col1, col2 = st.columns([1, 5])
+    col1, col2, col3 = st.columns([1, 1.2, 5])
 
+    # ---- Checkbox ----
     with col1:
         new_owned = st.checkbox(
             "Owned",
@@ -97,11 +106,22 @@ for _, row in df.iterrows():
             upsert_user_card(user_id, card_id, new_owned)
             st.rerun()
 
+    # ---- Card image ----
     with col2:
+        if row["image_url"]:
+            st.image(row["image_url"], width=90)
+        else:
+            st.write("No image")
+
+    # ---- Card details ----
+    with col3:
+        series_text = row["series_name"] if row["series_name"] else "Unknown Series"
+        set_text = row["set_name"] if row["set_name"] else "Unknown Set"
+
         st.write(
             f"**{row['name']}**  \n"
-            f"{row['series_name']} | {row['set_name']} | #{row['local_id']}  \n"
-            f"Rarity: {row['rarity']} | CardMarket Trend: {value_text}"
+            f"{series_text} | {set_text} | #{row['local_id']}  \n"
+            f"Rarity: {row['rarity']} | {value_text}"
         )
 
     st.divider()
