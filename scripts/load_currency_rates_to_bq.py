@@ -10,7 +10,7 @@ from google.oauth2 import service_account
 import json
 
 PROJECT_ID = "pokemon-pacey32-github"
-DATASET_ID = "pokemonApp"
+DATASET_ID = "pokemondatafromapi"
 TABLE_ID = "currency_rates"
 ECB_XML_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
 
