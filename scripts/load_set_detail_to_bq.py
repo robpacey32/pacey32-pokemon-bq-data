@@ -8,7 +8,7 @@ import requests
 from google.cloud import bigquery
 
 PROJECT_ID = "pokemon-pacey32-github"
-DATASET_ID = "pokemonApp"
+DATASET_ID = "pokemondatafromapi"
 TABLE_ID = "set_detail"
 LANGUAGE = "en"
 
