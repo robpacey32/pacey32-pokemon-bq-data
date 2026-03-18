@@ -1,17 +1,22 @@
 import streamlit as st
 from auth import register_user, login_user
+from styles import apply_umbreon_theme
 
-st.set_page_config(page_title="Pokemon Collection App", layout="wide")
 
-if "user" not in st.session_state:
-    st.session_state.user = None
+def render_login_portal(show_title: bool = True):
+    apply_umbreon_theme()
 
-if "display_currency" not in st.session_state:
-    st.session_state.display_currency = "GBP"
+    if "user" not in st.session_state:
+        st.session_state.user = None
 
-st.title("Pokemon Collection App")
+    if "display_currency" not in st.session_state:
+        st.session_state.display_currency = "GBP"
 
-if st.session_state.user is None:
+    if show_title:
+        st.title("Account")
+
+    st.markdown('<div class="section-shell">', unsafe_allow_html=True)
+    st.markdown("### Sign in")
     tab1, tab2 = st.tabs(["Login", "Register"])
 
     with tab1:
@@ -27,9 +32,9 @@ if st.session_state.user is None:
                     "username": user["username"],
                     "email": user["email"],
                     "user_id": user["username"],
+                    "created_at": user.get("created_at"),
+                    "last_login_at": user.get("last_login_at"),
                 }
-                st.session_state.display_currency = st.session_state.get("display_currency", "GBP")
-                st.success("Logged in")
                 st.rerun()
             else:
                 st.error("Invalid username or password")
@@ -48,10 +53,12 @@ if st.session_state.user is None:
             else:
                 st.error(msg)
 
-else:
-    st.write(f"Logged in as **{st.session_state.user['username']}**")
-    st.write(f"Display currency: **{st.session_state.display_currency}**")
-
-    if st.button("Logout"):
-        st.session_state.user = None
-        st.rerun()
+    st.markdown(
+        """
+        <div class="help-box">
+            Need help? Contact <b>info@pacey32.com</b>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
