@@ -23,7 +23,10 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
       - name: Run currency loader
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GCP_SA_KEY }}
         run: python -u scripts/load_currency_rates_to_bq.py
