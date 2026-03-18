@@ -62,6 +62,21 @@ eur_to_display = get_fx_rate("EUR", display_currency)
 
 st.write(f"Showing **{len(df)}** cards")
 
+
+# -------------------------
+# Card Images
+# -------------------------
+def build_card_image_url(image_url: str | None) -> str | None:
+    if not image_url:
+        return None
+
+    image_url = str(image_url).strip().rstrip("/")
+
+    if image_url.endswith((".png", ".jpg", ".jpeg", ".webp")):
+        return image_url
+
+    return f"{image_url}/low.webp"
+
 # -------------------------
 # DISPLAY CARDS
 # -------------------------
@@ -108,8 +123,9 @@ for _, row in df.iterrows():
 
     # ---- Card image ----
     with col2:
-        if row["image_url"]:
-            st.image(row["image_url"], width=90)
+        final_image_url = build_card_image_url(row["image_url"])
+        if final_image_url:
+            st.image(final_image_url, width=90)
         else:
             st.write("No image")
 

@@ -118,7 +118,12 @@ def get_card_master(
         snapshot_timestamp
     FROM `pokemon-pacey32-github.pokemonApp.card_master_vw`
     {where_clause}
-    ORDER BY release_date, set_name, local_id
+    ORDER BY
+        release_date,
+        set_name,
+        CASE WHEN SAFE_CAST(local_id AS INT64) IS NULL THEN 1 ELSE 0 END,
+        SAFE_CAST(local_id AS INT64),
+        local_id
     LIMIT {limit}
     """
 
