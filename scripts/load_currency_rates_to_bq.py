@@ -15,7 +15,7 @@ TABLE_ID = "currency_rates"
 ECB_XML_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
 
 def get_bq_client():
-    creds_info = json.loads(os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+    creds_info = json.loads(os.environ["GCP_SA_KEY"])
     credentials = service_account.Credentials.from_service_account_info(creds_info)
     return bigquery.Client(project=PROJECT_ID, credentials=credentials)
 
