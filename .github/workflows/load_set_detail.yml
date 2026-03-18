@@ -1,4 +1,4 @@
-name: Load Set Detail to BigQuery
+name: 3. Load Set Detail to BigQuery
 
 on:
   workflow_dispatch:
