@@ -1,0 +1,29 @@
+name: Load Currency Rates to BigQuery
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 16 * * 1-5"
+
+jobs:
+  load-currency-rates:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run currency loader
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+        run: python -u scripts/load_currency_rates_to_bq.py
