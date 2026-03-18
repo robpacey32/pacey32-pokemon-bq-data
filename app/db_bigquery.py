@@ -1,9 +1,18 @@
+import os
+import json
 import pandas as pd
 from google.cloud import bigquery
+from google.oauth2 import service_account
 
 PROJECT_ID = "pokemon-pacey32-github"
 
-client = bigquery.Client(project=PROJECT_ID)
+creds_info = json.loads(os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+credentials = service_account.Credentials.from_service_account_info(creds_info)
+
+client = bigquery.Client(
+    project=PROJECT_ID,
+    credentials=credentials
+)
 
 
 def run_query(sql: str) -> pd.DataFrame:
@@ -37,7 +46,7 @@ def get_series_list() -> list:
     FROM `pokemon-pacey32-github.pokemonApp.card_master_vw`
     WHERE series_name IS NOT NULL
     GROUP BY series_name
-    ORDER BY MIN(release_date), series_name
+    ORDER BY MIN(release_date) IS NULL, MIN(release_date), series_name
     """
     df = run_query(sql)
     return df["series_name"].dropna().tolist()
@@ -58,7 +67,7 @@ def get_set_list(series_name: str | None = None) -> list:
     FROM `pokemon-pacey32-github.pokemonApp.card_master_vw`
     {where_clause}
     GROUP BY set_name
-    ORDER BY MIN(release_date), set_name
+    ORDER BY MIN(release_date) IS NULL, MIN(release_date), set_name
     """
     df = run_query(sql)
     return df["set_name"].dropna().tolist()
