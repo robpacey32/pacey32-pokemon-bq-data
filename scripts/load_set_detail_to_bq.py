@@ -1,12 +1,14 @@
 import json
+import time
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 import pandas as pd
 import requests
 from google.cloud import bigquery
 
 PROJECT_ID = "pokemon-pacey32-github"
-DATASET_ID = "pokemondatafromapi"
+DATASET_ID = "pokemonApp"
 TABLE_ID = "set_detail"
 LANGUAGE = "en"
 
@@ -38,11 +40,23 @@ def fetch_sets():
     return resp.json()
 
 
-def build_rows(sets_data):
-    load_ts = datetime.now(timezone.utc)
+def fetch_set_detail(set_id):
+    encoded_id = quote(set_id, safe="")
+    url = f"{SETS_URL}/{encoded_id}"
+    resp = requests.get(url, timeout=60)
+    resp.raise_for_status()
+    return resp.json()
 
+
+def build_rows(sets_summary):
+    load_ts = datetime.now(timezone.utc)
     rows = []
-    for s in sets_data:
+    total = len(sets_summary)
+
+    for i, summary in enumerate(sets_summary, start=1):
+        set_id = summary["id"]
+        s = fetch_set_detail(set_id)
+
         row = {
             "set_id": s.get("id"),
             "set_name": s.get("name"),
@@ -57,7 +71,13 @@ def build_rows(sets_data):
             "source_language": LANGUAGE,
             "load_timestamp": load_ts,
         }
+
         rows.append(row)
+
+        if i % 25 == 0 or i == total:
+            print(f"Fetched {i}/{total} sets", flush=True)
+
+        time.sleep(0.03)
 
     return pd.DataFrame(rows)
 
@@ -124,8 +144,8 @@ def load_to_bigquery(df):
 
 
 def main():
-    sets_data = fetch_sets()
-    df = build_rows(sets_data)
+    sets_summary = fetch_sets()
+    df = build_rows(sets_summary)
     df = align_dataframe_types(df)
 
     print(df.head(), flush=True)
