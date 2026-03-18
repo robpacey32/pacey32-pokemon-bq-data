@@ -118,10 +118,24 @@ def load_to_bigquery(df):
     job.result()
     print(f"Loaded {len(df)} rows to {table_ref}", flush=True)
 
+def align_currency_dataframe_types(df):
+    df["rate_date"] = pd.to_datetime(df["rate_date"], errors="coerce").dt.date
+    df["base_currency"] = df["base_currency"].astype("string")
+    df["target_currency"] = df["target_currency"].astype("string")
+    df["exchange_rate"] = pd.to_numeric(df["exchange_rate"], errors="coerce")
+    df["source"] = df["source"].astype("string")
+    df["load_timestamp"] = pd.to_datetime(df["load_timestamp"], utc=True, errors="coerce")
+    return df
+
 def main():
     rate_date, raw_rates = fetch_ecb_rates()
     df = build_rows(rate_date, raw_rates)
+
+    df = align_currency_dataframe_types(df)
+
     print(df, flush=True)
+    print(df.dtypes, flush=True)
+
     load_to_bigquery(df)
 
 if __name__ == "__main__":
