@@ -15,9 +15,7 @@ TABLE_ID = "currency_rates"
 ECB_XML_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
 
 def get_bq_client():
-    creds_info = json.loads(os.environ["GCP_SA_KEY"])
-    credentials = service_account.Credentials.from_service_account_info(creds_info)
-    return bigquery.Client(project=PROJECT_ID, credentials=credentials)
+    return bigquery.Client(project=PROJECT_ID)
 
 def fetch_ecb_rates():
     resp = requests.get(ECB_XML_URL, timeout=60)
