@@ -13,7 +13,7 @@ def check_password(password: str, password_hash) -> bool:
 
 
 def register_user(username: str, email: str, password: str):
-    clean_username = username.strip()
+    clean_username = username.strip().lower()
     clean_email = email.strip().lower()
 
     existing = users_col.find_one({
@@ -32,15 +32,16 @@ def register_user(username: str, email: str, password: str):
         "password_hash": hash_password(password),
         "created_at": __import__("datetime").datetime.utcnow(),
         "last_login_at": None,
+        "display_currency": "GBP",
     })
 
     return True, "User created successfully"
 
 
 def login_user(username: str, password: str):
-    clean_username = username.strip()
+    clean_username = username.strip().lower()
     user = users_col.find_one({"username": clean_username})
-
+    
     if not user:
         return None
 
@@ -52,7 +53,7 @@ def login_user(username: str, password: str):
 
 
 def change_password(username: str, current_password: str, new_password: str):
-    user = users_col.find_one({"username": username})
+    user = users_col.find_one({"username": username.strip().lower()})
     if not user:
         return False, "User not found"
 

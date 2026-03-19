@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from ui_auth import render_login_portal, restore_login_from_cookie
 
 from db_bigquery import (
     get_series_list,
@@ -13,10 +14,10 @@ from db_bigquery import (
 )
 from db_mongo import get_user_owned_card_ids, upsert_user_card
 from styles import apply_umbreon_theme
-from ui_auth import render_login_portal
 
 st.set_page_config(page_title="Collection Entry", layout="wide")
 apply_umbreon_theme()
+restore_login_from_cookie()
 
 if "user" not in st.session_state or st.session_state.user is None:
     render_login_portal(show_title=True)
@@ -165,15 +166,6 @@ def render_card_detail_panel(card_id, display_currency, symbol):
 
 with st.sidebar:
     st.subheader("Filters")
-
-    currency_options = ["GBP", "EUR", "USD"]
-    selected_currency = st.selectbox(
-        "Display currency",
-        currency_options,
-        index=currency_options.index(st.session_state.get("display_currency", "GBP")),
-        key="collection_entry_currency",
-    )
-    st.session_state.display_currency = selected_currency
 
     series_options = ["All"] + get_series_list()
     selected_series = st.selectbox("Series", series_options)

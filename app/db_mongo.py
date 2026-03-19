@@ -11,6 +11,11 @@ db = client[DB_NAME]
 users_col = db["users"]
 user_cards_col = db["user_cards"]
 
+# Ensure indexes (safe to run multiple times)
+users_col.create_index("username", unique=True)
+user_cards_col.create_index([("user_id", 1), ("card_id", 1)], unique=True)
+user_cards_col.create_index([("user_id", 1), ("owned", 1)])
+
 
 def get_user_owned_card_ids(user_id: str) -> set:
     docs = user_cards_col.find(
@@ -40,24 +45,29 @@ def get_user_cards_df(user_id: str):
         {"user_id": user_id},
         {"_id": 0}
     ))
-
     import pandas as pd
     return pd.DataFrame(docs)
 
 
 def get_user_by_username(username: str):
-    return users_col.find_one({"username": username})
+    return users_col.find_one({"username": username.strip().lower()})
 
 
 def update_last_login(username: str):
     users_col.update_one(
-        {"username": username},
+        {"username": username.strip().lower()},
         {"$set": {"last_login_at": datetime.now(timezone.utc)}}
     )
 
 
 def update_user_password(username: str, password_hash: bytes):
     users_col.update_one(
-        {"username": username},
+        {"username": username.strip().lower()},
         {"$set": {"password_hash": password_hash}}
+    )
+
+def update_user_display_currency(username: str, display_currency: str):
+    users_col.update_one(
+        {"username": username.strip().lower()},
+        {"$set": {"display_currency": display_currency}}
     )

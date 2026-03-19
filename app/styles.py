@@ -81,9 +81,10 @@ def apply_umbreon_theme():
             padding: 12px 14px;
         }
 
+        /* Buttons */
         .stButton > button, .stFormSubmitButton > button {
             background: linear-gradient(180deg, var(--gold), #e9ca78);
-            color: #111;
+            color: #111 !important;
             border: none;
             border-radius: 12px;
             font-weight: 700;
@@ -91,7 +92,7 @@ def apply_umbreon_theme():
 
         .stButton > button:hover, .stFormSubmitButton > button:hover {
             background: linear-gradient(180deg, #f7e4aa, var(--gold));
-            color: #111;
+            color: #111 !important;
         }
 
         section[data-testid="stSidebar"] {
@@ -103,8 +104,30 @@ def apply_umbreon_theme():
             border-color: rgba(244, 217, 149, 0.15);
         }
 
-        div[data-testid="stForm"] [data-testid="stMarkdownContainer"] p {
-            display: none;
+        /* === REMOVE "Press Enter to submit form" === */
+
+        /* Standard helper text */
+        div[data-testid="stTextInput"] small,
+        div[data-testid="stTextInput"] [aria-live="polite"] {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+        }
+
+        /* Newer Streamlit versions */
+        div[data-testid="stTextInput"] [data-testid="InputInstructions"] {
+            display: none !important;
+        }
+
+        /* Aggressive fallback: removes right-side hint inside input */
+        div[data-testid="stTextInput"] div[style*="justify-content: space-between"] {
+            display: none !important;
+        }
+
+        /* Ensure button text is always visible */
+        button, button * {
+            color: #020303 !important;
+            fill: #020303 !important;
         }
 
         </style>

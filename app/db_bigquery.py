@@ -5,7 +5,6 @@ import streamlit as st
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-
 PROJECT_ID = "pokemon-pacey32-github"
 
 if "GOOGLE_APPLICATION_CREDENTIALS_JSON" in os.environ:
@@ -16,10 +15,12 @@ else:
     client = bigquery.Client(project=PROJECT_ID)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
 def run_query(sql: str) -> pd.DataFrame:
     return client.query(sql).to_dataframe()
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_fx_rate(base_currency: str, target_currency: str) -> float:
     if base_currency == target_currency:
         return 1.0
@@ -37,6 +38,7 @@ def get_fx_rate(base_currency: str, target_currency: str) -> float:
     return float(df.iloc[0]["exchange_rate"])
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_series_list() -> list:
     sql = """
     SELECT series_name
@@ -48,6 +50,7 @@ def get_series_list() -> list:
     return run_query(sql)["series_name"].dropna().tolist()
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_set_list(series_name: str | None = None) -> list:
     filters = ["set_name IS NOT NULL"]
 
@@ -67,11 +70,13 @@ def get_set_list(series_name: str | None = None) -> list:
     return run_query(sql)["set_name"].dropna().tolist()
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+
 def get_card_master(
     series_name: str | None = None,
     set_name: str | None = None,
     card_name_search: str | None = None,
-    limit: int = 500,
+    limit: int | None = None,
     display_currency: str = "GBP",
 ) -> pd.DataFrame:
     filters = []
@@ -137,12 +142,13 @@ def get_card_master(
         CASE WHEN SAFE_CAST(local_id AS INT64) IS NULL THEN 1 ELSE 0 END,
         SAFE_CAST(local_id AS INT64),
         local_id
-    LIMIT {limit}
     """
+    if limit is not None:
+        sql += f" LIMIT {limit}"
     return run_query(sql)
 
 
-
+@st.cache_data(ttl=300, show_spinner=False)
 def get_card_detail_by_id(card_id: str) -> pd.DataFrame:
     safe_card_id = card_id.replace("'", "\\'")
 
@@ -164,7 +170,6 @@ def get_card_detail_by_id(card_id: str) -> pd.DataFrame:
         m.cardmarket_low,
         m.cardmarket_trend,
         m.snapshot_timestamp,
-
         d.category,
         d.hp,
         d.illustrator,
@@ -187,13 +192,33 @@ def get_card_detail_by_id(card_id: str) -> pd.DataFrame:
         d.legal_json
     FROM `pokemon-pacey32-github.pokemonApp.card_master_vw` m
     LEFT JOIN `pokemon-pacey32-github.pokemonApp.card_detail_vw` d
-        ON m.card_id = d.card_id
+      ON m.card_id = d.card_id
     WHERE m.card_id = '{safe_card_id}'
     LIMIT 1
     """
     return run_query(sql)
 
 
+def _select_display_currency_columns(df: pd.DataFrame) -> pd.DataFrame:
+    display_currency = st.session_state.get("display_currency", "GBP").lower()
+
+    rename_map = {
+        f"cardmarket_avg_display_{display_currency}": "cardmarket_avg_display",
+        f"cardmarket_low_display_{display_currency}": "cardmarket_low_display",
+        f"cardmarket_trend_display_{display_currency}": "cardmarket_trend_display",
+        f"cardmarket_avg_holo_display_{display_currency}": "cardmarket_avg_holo_display",
+        f"cardmarket_low_holo_display_{display_currency}": "cardmarket_low_holo_display",
+        f"cardmarket_trend_holo_display_{display_currency}": "cardmarket_trend_holo_display",
+        f"tcgplayer_normal_market_price_display_{display_currency}": "tcgplayer_normal_market_price_display",
+        f"tcgplayer_holofoil_market_price_display_{display_currency}": "tcgplayer_holofoil_market_price_display",
+        f"tcgplayer_reverse_holofoil_market_price_display_{display_currency}": "tcgplayer_reverse_holofoil_market_price_display",
+    }
+
+    existing = {k: v for k, v in rename_map.items() if k in df.columns}
+    return df.rename(columns=existing)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
 def get_card_price_history(card_id: str) -> pd.DataFrame:
     safe_card_id = card_id.replace("'", "\\'")
     eur_to_gbp = get_fx_rate("EUR", "GBP")
@@ -248,31 +273,12 @@ def get_card_price_history(card_id: str) -> pd.DataFrame:
     ORDER BY snapshot_timestamp
     """
     df = run_query(sql)
-
     if df.empty:
         return df
-
     return _select_display_currency_columns(df)
 
-def _select_display_currency_columns(df: pd.DataFrame) -> pd.DataFrame:
-    display_currency = st.session_state.get("display_currency", "GBP").lower()
 
-    rename_map = {
-        f"cardmarket_avg_display_{display_currency}": "cardmarket_avg_display",
-        f"cardmarket_low_display_{display_currency}": "cardmarket_low_display",
-        f"cardmarket_trend_display_{display_currency}": "cardmarket_trend_display",
-        f"cardmarket_avg_holo_display_{display_currency}": "cardmarket_avg_holo_display",
-        f"cardmarket_low_holo_display_{display_currency}": "cardmarket_low_holo_display",
-        f"cardmarket_trend_holo_display_{display_currency}": "cardmarket_trend_holo_display",
-        f"tcgplayer_normal_market_price_display_{display_currency}": "tcgplayer_normal_market_price_display",
-        f"tcgplayer_holofoil_market_price_display_{display_currency}": "tcgplayer_holofoil_market_price_display",
-        f"tcgplayer_reverse_holofoil_market_price_display_{display_currency}": "tcgplayer_reverse_holofoil_market_price_display",
-    }
-
-    existing = {k: v for k, v in rename_map.items() if k in df.columns}
-    return df.rename(columns=existing)
-
-
+@st.cache_data(ttl=300, show_spinner=False)
 def get_card_latest_variant_prices(card_id: str) -> pd.DataFrame:
     safe_card_id = card_id.replace("'", "\\'")
     eur_to_gbp = get_fx_rate("EUR", "GBP")
@@ -329,8 +335,6 @@ def get_card_latest_variant_prices(card_id: str) -> pd.DataFrame:
     LIMIT 1
     """
     df = run_query(sql)
-
     if df.empty:
         return df
-
     return _select_display_currency_columns(df)

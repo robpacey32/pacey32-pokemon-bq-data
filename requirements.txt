@@ -10,3 +10,4 @@ pymongo
 streamlit
 bcrypt
 plotly
+streamlit-cookies-manager
