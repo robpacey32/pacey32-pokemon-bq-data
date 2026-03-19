@@ -4,7 +4,7 @@ from db_mongo import get_user_owned_card_ids, upsert_user_card
 from styles import apply_umbreon_theme
 from ui_auth import render_login_portal
 
-st.set_page_config(page_title="Collection", layout="wide")
+st.set_page_config(page_title="Collection Entry", layout="wide")
 apply_umbreon_theme()
 
 if "user" not in st.session_state or st.session_state.user is None:
@@ -16,7 +16,7 @@ if "display_currency" not in st.session_state:
 
 user_id = st.session_state.user["user_id"]
 
-st.title("Collection")
+st.title("Collection Entry")
 st.write(f"Logged in as **{st.session_state.user['username']}**")
 
 with st.sidebar:

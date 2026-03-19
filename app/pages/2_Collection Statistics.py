@@ -1,0 +1,270 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+
+from db_bigquery import get_card_master, get_fx_rate
+from db_mongo import get_user_cards_df
+from styles import apply_umbreon_theme
+from ui_auth import render_login_portal
+
+st.set_page_config(page_title="Collection Statistics", layout="wide")
+apply_umbreon_theme()
+
+if "user" not in st.session_state or st.session_state.user is None:
+    render_login_portal(show_title=True)
+    st.stop()
+
+if "display_currency" not in st.session_state:
+    st.session_state.display_currency = "GBP"
+
+user_id = st.session_state.user["user_id"]
+
+st.title("Collection Statistics")
+
+with st.sidebar:
+    st.subheader("Display")
+
+    currency_options = ["GBP", "EUR", "USD"]
+    selected_currency = st.selectbox(
+        "Display currency",
+        currency_options,
+        index=currency_options.index(st.session_state.get("display_currency", "GBP")),
+        key="stats_currency"
+    )
+    st.session_state.display_currency = selected_currency
+
+display_currency = st.session_state.display_currency
+eur_to_display = get_fx_rate("EUR", display_currency)
+
+currency_symbols = {
+    "GBP": "£",
+    "EUR": "€",
+    "USD": "$"
+}
+symbol = currency_symbols.get(display_currency, display_currency)
+
+# -------------------------
+# LOAD DATA
+# -------------------------
+cards_df = get_card_master(limit=50000)
+user_df = get_user_cards_df(user_id)
+
+if user_df.empty:
+    user_df = pd.DataFrame(columns=["card_id", "owned"])
+
+df = cards_df.merge(user_df, on="card_id", how="left")
+df["owned"] = df["owned"].fillna(False)
+
+df["value_eur"] = pd.to_numeric(df["cardmarket_trend"], errors="coerce").fillna(0)
+df["value"] = df["value_eur"] * eur_to_display
+df["owned_value"] = df.apply(lambda x: x["value"] if x["owned"] else 0, axis=1)
+
+# -------------------------
+# TOP METRICS
+# -------------------------
+total_cards = len(df)
+owned_cards = int(df["owned"].sum())
+pct_complete = (owned_cards / total_cards * 100) if total_cards > 0 else 0
+collection_value = df.loc[df["owned"] == True, "value"].sum()
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Cards Owned", f"{owned_cards:,}")
+col2.metric("Completion %", f"{pct_complete:.1f}%")
+col3.metric("Collection Value", f"{symbol}{collection_value:,.0f}")
+
+st.markdown("---")
+
+# -------------------------
+# VIEW MODE
+# -------------------------
+view_mode = st.selectbox(
+    "Chart view",
+    ["% cards completion", "% value completion"],
+    index=0
+)
+
+# -------------------------
+# SERIES SUMMARY
+# -------------------------
+series_stats = (
+    df.groupby("series_name", dropna=False)
+    .agg(
+        total_cards=("card_id", "count"),
+        owned_cards=("owned", "sum"),
+        total_value=("value", "sum"),
+        owned_value=("owned_value", "sum"),
+    )
+    .reset_index()
+)
+
+series_stats["series_name"] = series_stats["series_name"].fillna("Unknown Series")
+series_stats["pct_cards_completion"] = (
+    series_stats["owned_cards"] / series_stats["total_cards"] * 100
+).fillna(0)
+
+series_stats["pct_value_completion"] = (
+    series_stats["owned_value"] / series_stats["total_value"].replace(0, pd.NA) * 100
+).fillna(0)
+
+if view_mode == "% cards completion":
+    chart_col = "pct_cards_completion"
+    chart_title = "Series completion by cards"
+else:
+    chart_col = "pct_value_completion"
+    chart_title = "Series completion by value"
+
+series_stats = series_stats.sort_values(chart_col, ascending=True)
+
+fig_series = px.bar(
+    series_stats,
+    x=chart_col,
+    y="series_name",
+    orientation="h",
+    text=series_stats[chart_col].round(1).astype(str) + "%",
+    custom_data=["series_name"],
+)
+
+fig_series.update_traces(
+    textposition="outside",
+    hovertemplate="<b>%{y}</b><br>%{x:.1f}%<extra></extra>",
+)
+fig_series.update_layout(
+    title=chart_title,
+    xaxis_title="Completion %",
+    yaxis_title="Series",
+    height=max(500, len(series_stats) * 28),
+    margin=dict(l=20, r=20, t=50, b=20),
+)
+
+st.markdown("### Series overview")
+series_event = st.plotly_chart(
+    fig_series,
+    use_container_width=True,
+    key="series_completion_chart",
+    on_select="rerun",
+    config={"displayModeBar": False},
+)
+
+selected_series = st.session_state.get("selected_series_for_stats")
+
+if series_event and getattr(series_event, "selection", None):
+    points = series_event.selection.get("points", [])
+    if points:
+        selected_series = points[0].get("y")
+        st.session_state["selected_series_for_stats"] = selected_series
+
+col_a, col_b = st.columns([4, 1])
+with col_a:
+    if selected_series:
+        st.info(f"Drilldown series: {selected_series}")
+    else:
+        st.caption("Click a series bar to drill into its sets.")
+with col_b:
+    if st.button("Clear selection"):
+        st.session_state["selected_series_for_stats"] = None
+        st.rerun()
+
+# -------------------------
+# SET DRILLDOWN
+# -------------------------
+if selected_series:
+    drill_df = df[df["series_name"].fillna("Unknown Series") == selected_series].copy()
+
+    set_stats = (
+        drill_df.groupby("set_name", dropna=False)
+        .agg(
+            total_cards=("card_id", "count"),
+            owned_cards=("owned", "sum"),
+            total_value=("value", "sum"),
+            owned_value=("owned_value", "sum"),
+            release_date=("release_date", "min"),
+        )
+        .reset_index()
+    )
+
+    set_stats["set_name"] = set_stats["set_name"].fillna("Unknown Set")
+    set_stats["pct_cards_completion"] = (
+        set_stats["owned_cards"] / set_stats["total_cards"] * 100
+    ).fillna(0)
+
+    set_stats["pct_value_completion"] = (
+        set_stats["owned_value"] / set_stats["total_value"].replace(0, pd.NA) * 100
+    ).fillna(0)
+
+    set_stats = set_stats.sort_values(
+        by=["release_date", "set_name"],
+        ascending=[True, True],
+        na_position="last"
+    )
+
+    if view_mode == "% cards completion":
+        drill_col = "pct_cards_completion"
+        drill_title = f"Set drilldown for {selected_series} by cards"
+    else:
+        drill_col = "pct_value_completion"
+        drill_title = f"Set drilldown for {selected_series} by value"
+
+    fig_sets = px.bar(
+        set_stats.sort_values(drill_col, ascending=True),
+        x=drill_col,
+        y="set_name",
+        orientation="h",
+        text=set_stats.sort_values(drill_col, ascending=True)[drill_col].round(1).astype(str) + "%",
+    )
+
+    fig_sets.update_traces(
+        textposition="outside",
+        hovertemplate="<b>%{y}</b><br>%{x:.1f}%<extra></extra>",
+    )
+    fig_sets.update_layout(
+        title=drill_title,
+        xaxis_title="Completion %",
+        yaxis_title="Set",
+        height=max(400, len(set_stats) * 28),
+        margin=dict(l=20, r=20, t=50, b=20),
+    )
+
+    st.markdown("### Set drilldown")
+    st.plotly_chart(
+        fig_sets,
+        use_container_width=True,
+        config={"displayModeBar": False},
+    )
+
+st.markdown("---")
+
+# -------------------------
+# TOP 10 OWNED CARDS
+# -------------------------
+st.markdown("### Top 10 owned cards")
+
+owned_df = df[df["owned"] == True].copy()
+
+if owned_df.empty:
+    st.info("You do not have any owned cards yet.")
+else:
+    top_owned = owned_df.sort_values("value", ascending=False).head(10).copy()
+    top_owned["display_value"] = top_owned["value"].fillna(0)
+
+    # Format value with currency symbol
+    top_owned["formatted_value"] = top_owned["value"].apply(
+        lambda x: f"{symbol}{x:,.2f}" if pd.notnull(x) else f"{symbol}0.00"
+    )
+
+    # Build display table
+    display_df = top_owned.rename(
+        columns={
+            "name": "Name",
+            "series_name": "Series",
+            "set_name": "Set",
+            "card_id": "Card ID",
+        }
+    )[["Name", "Series", "Set", "Card ID", "formatted_value"]]
+
+    display_df = display_df.rename(columns={"formatted_value": "Value"})
+
+    st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+    )
