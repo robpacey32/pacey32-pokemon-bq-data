@@ -102,6 +102,11 @@ def apply_umbreon_theme():
         hr {
             border-color: rgba(244, 217, 149, 0.15);
         }
+
+        div[data-testid="stForm"] [data-testid="stMarkdownContainer"] p {
+            display: none;
+        }
+
         </style>
         """,
         unsafe_allow_html=True,

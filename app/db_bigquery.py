@@ -1,8 +1,10 @@
 import os
 import json
 import pandas as pd
+import streamlit as st
 from google.cloud import bigquery
 from google.oauth2 import service_account
+
 
 PROJECT_ID = "pokemon-pacey32-github"
 
@@ -70,6 +72,7 @@ def get_card_master(
     set_name: str | None = None,
     card_name_search: str | None = None,
     limit: int = 500,
+    display_currency: str = "GBP",
 ) -> pd.DataFrame:
     filters = []
 
@@ -89,6 +92,22 @@ def get_card_master(
     if filters:
         where_clause = "WHERE " + " AND ".join(filters)
 
+    eur_to_gbp = get_fx_rate("EUR", "GBP")
+    eur_to_usd = get_fx_rate("EUR", "USD")
+
+    if display_currency == "EUR":
+        cardmarket_avg_expr = "cardmarket_avg"
+        cardmarket_low_expr = "cardmarket_low"
+        cardmarket_trend_expr = "cardmarket_trend"
+    elif display_currency == "USD":
+        cardmarket_avg_expr = f"cardmarket_avg * {eur_to_usd}"
+        cardmarket_low_expr = f"cardmarket_low * {eur_to_usd}"
+        cardmarket_trend_expr = f"cardmarket_trend * {eur_to_usd}"
+    else:
+        cardmarket_avg_expr = f"cardmarket_avg * {eur_to_gbp}"
+        cardmarket_low_expr = f"cardmarket_low * {eur_to_gbp}"
+        cardmarket_trend_expr = f"cardmarket_trend * {eur_to_gbp}"
+
     sql = f"""
     SELECT
         card_id,
@@ -103,6 +122,9 @@ def get_card_master(
         image_url,
         symbol_url,
         logo_url,
+        {cardmarket_avg_expr} AS cardmarket_avg_display,
+        {cardmarket_low_expr} AS cardmarket_low_display,
+        {cardmarket_trend_expr} AS cardmarket_trend_display,
         cardmarket_avg,
         cardmarket_low,
         cardmarket_trend,
@@ -118,3 +140,197 @@ def get_card_master(
     LIMIT {limit}
     """
     return run_query(sql)
+
+
+
+def get_card_detail_by_id(card_id: str) -> pd.DataFrame:
+    safe_card_id = card_id.replace("'", "\\'")
+
+    sql = f"""
+    SELECT
+        m.card_id,
+        m.name,
+        m.local_id,
+        m.set_id,
+        m.set_name,
+        m.series_id,
+        m.series_name,
+        m.release_date,
+        m.rarity,
+        m.image_url,
+        m.symbol_url,
+        m.logo_url,
+        m.cardmarket_avg,
+        m.cardmarket_low,
+        m.cardmarket_trend,
+        m.snapshot_timestamp,
+
+        d.category,
+        d.hp,
+        d.illustrator,
+        d.description,
+        d.stage,
+        d.level,
+        d.suffix,
+        d.trainer_type,
+        d.regulation_mark,
+        d.types_json,
+        d.supertypes_json,
+        d.subtypes_json,
+        d.abilities_json,
+        d.attacks_json,
+        d.weaknesses_json,
+        d.resistances_json,
+        d.retreat,
+        d.dex_id_json,
+        d.variants_json,
+        d.legal_json
+    FROM `pokemon-pacey32-github.pokemonApp.card_master_vw` m
+    LEFT JOIN `pokemon-pacey32-github.pokemonApp.card_detail_vw` d
+        ON m.card_id = d.card_id
+    WHERE m.card_id = '{safe_card_id}'
+    LIMIT 1
+    """
+    return run_query(sql)
+
+
+def get_card_price_history(card_id: str) -> pd.DataFrame:
+    safe_card_id = card_id.replace("'", "\\'")
+    eur_to_gbp = get_fx_rate("EUR", "GBP")
+    eur_to_usd = get_fx_rate("EUR", "USD")
+    usd_to_gbp = get_fx_rate("USD", "GBP")
+    usd_to_eur = get_fx_rate("USD", "EUR")
+
+    sql = f"""
+    SELECT
+        snapshot_timestamp,
+        cardmarket_avg,
+        cardmarket_low,
+        cardmarket_trend,
+        cardmarket_avg_holo,
+        cardmarket_low_holo,
+        cardmarket_trend_holo,
+        tcgplayer_normal_market_price,
+        tcgplayer_holofoil_market_price,
+        tcgplayer_reverse_holofoil_market_price,
+
+        cardmarket_avg AS cardmarket_avg_display_eur,
+        cardmarket_low AS cardmarket_low_display_eur,
+        cardmarket_trend AS cardmarket_trend_display_eur,
+        cardmarket_avg_holo AS cardmarket_avg_holo_display_eur,
+        cardmarket_low_holo AS cardmarket_low_holo_display_eur,
+        cardmarket_trend_holo AS cardmarket_trend_holo_display_eur,
+        tcgplayer_normal_market_price * {usd_to_eur} AS tcgplayer_normal_market_price_display_eur,
+        tcgplayer_holofoil_market_price * {usd_to_eur} AS tcgplayer_holofoil_market_price_display_eur,
+        tcgplayer_reverse_holofoil_market_price * {usd_to_eur} AS tcgplayer_reverse_holofoil_market_price_display_eur,
+
+        cardmarket_avg * {eur_to_gbp} AS cardmarket_avg_display_gbp,
+        cardmarket_low * {eur_to_gbp} AS cardmarket_low_display_gbp,
+        cardmarket_trend * {eur_to_gbp} AS cardmarket_trend_display_gbp,
+        cardmarket_avg_holo * {eur_to_gbp} AS cardmarket_avg_holo_display_gbp,
+        cardmarket_low_holo * {eur_to_gbp} AS cardmarket_low_holo_display_gbp,
+        cardmarket_trend_holo * {eur_to_gbp} AS cardmarket_trend_holo_display_gbp,
+        tcgplayer_normal_market_price * {usd_to_gbp} AS tcgplayer_normal_market_price_display_gbp,
+        tcgplayer_holofoil_market_price * {usd_to_gbp} AS tcgplayer_holofoil_market_price_display_gbp,
+        tcgplayer_reverse_holofoil_market_price * {usd_to_gbp} AS tcgplayer_reverse_holofoil_market_price_display_gbp,
+
+        cardmarket_avg * {eur_to_usd} AS cardmarket_avg_display_usd,
+        cardmarket_low * {eur_to_usd} AS cardmarket_low_display_usd,
+        cardmarket_trend * {eur_to_usd} AS cardmarket_trend_display_usd,
+        cardmarket_avg_holo * {eur_to_usd} AS cardmarket_avg_holo_display_usd,
+        cardmarket_low_holo * {eur_to_usd} AS cardmarket_low_holo_display_usd,
+        cardmarket_trend_holo * {eur_to_usd} AS cardmarket_trend_holo_display_usd,
+        tcgplayer_normal_market_price AS tcgplayer_normal_market_price_display_usd,
+        tcgplayer_holofoil_market_price AS tcgplayer_holofoil_market_price_display_usd,
+        tcgplayer_reverse_holofoil_market_price AS tcgplayer_reverse_holofoil_market_price_display_usd
+    FROM `pokemon-pacey32-github.pokemonApp.card_price_history`
+    WHERE card_id = '{safe_card_id}'
+    ORDER BY snapshot_timestamp
+    """
+    df = run_query(sql)
+
+    if df.empty:
+        return df
+
+    return _select_display_currency_columns(df)
+
+def _select_display_currency_columns(df: pd.DataFrame) -> pd.DataFrame:
+    display_currency = st.session_state.get("display_currency", "GBP").lower()
+
+    rename_map = {
+        f"cardmarket_avg_display_{display_currency}": "cardmarket_avg_display",
+        f"cardmarket_low_display_{display_currency}": "cardmarket_low_display",
+        f"cardmarket_trend_display_{display_currency}": "cardmarket_trend_display",
+        f"cardmarket_avg_holo_display_{display_currency}": "cardmarket_avg_holo_display",
+        f"cardmarket_low_holo_display_{display_currency}": "cardmarket_low_holo_display",
+        f"cardmarket_trend_holo_display_{display_currency}": "cardmarket_trend_holo_display",
+        f"tcgplayer_normal_market_price_display_{display_currency}": "tcgplayer_normal_market_price_display",
+        f"tcgplayer_holofoil_market_price_display_{display_currency}": "tcgplayer_holofoil_market_price_display",
+        f"tcgplayer_reverse_holofoil_market_price_display_{display_currency}": "tcgplayer_reverse_holofoil_market_price_display",
+    }
+
+    existing = {k: v for k, v in rename_map.items() if k in df.columns}
+    return df.rename(columns=existing)
+
+
+def get_card_latest_variant_prices(card_id: str) -> pd.DataFrame:
+    safe_card_id = card_id.replace("'", "\\'")
+    eur_to_gbp = get_fx_rate("EUR", "GBP")
+    eur_to_usd = get_fx_rate("EUR", "USD")
+    usd_to_gbp = get_fx_rate("USD", "GBP")
+    usd_to_eur = get_fx_rate("USD", "EUR")
+
+    sql = f"""
+    SELECT
+        card_id,
+        snapshot_timestamp,
+        cardmarket_avg,
+        cardmarket_low,
+        cardmarket_trend,
+        cardmarket_avg_holo,
+        cardmarket_low_holo,
+        cardmarket_trend_holo,
+        tcgplayer_normal_market_price,
+        tcgplayer_holofoil_market_price,
+        tcgplayer_reverse_holofoil_market_price,
+
+        cardmarket_avg AS cardmarket_avg_display_eur,
+        cardmarket_low AS cardmarket_low_display_eur,
+        cardmarket_trend AS cardmarket_trend_display_eur,
+        cardmarket_avg_holo AS cardmarket_avg_holo_display_eur,
+        cardmarket_low_holo AS cardmarket_low_holo_display_eur,
+        cardmarket_trend_holo AS cardmarket_trend_holo_display_eur,
+        tcgplayer_normal_market_price * {usd_to_eur} AS tcgplayer_normal_market_price_display_eur,
+        tcgplayer_holofoil_market_price * {usd_to_eur} AS tcgplayer_holofoil_market_price_display_eur,
+        tcgplayer_reverse_holofoil_market_price * {usd_to_eur} AS tcgplayer_reverse_holofoil_market_price_display_eur,
+
+        cardmarket_avg * {eur_to_gbp} AS cardmarket_avg_display_gbp,
+        cardmarket_low * {eur_to_gbp} AS cardmarket_low_display_gbp,
+        cardmarket_trend * {eur_to_gbp} AS cardmarket_trend_display_gbp,
+        cardmarket_avg_holo * {eur_to_gbp} AS cardmarket_avg_holo_display_gbp,
+        cardmarket_low_holo * {eur_to_gbp} AS cardmarket_low_holo_display_gbp,
+        cardmarket_trend_holo * {eur_to_gbp} AS cardmarket_trend_holo_display_gbp,
+        tcgplayer_normal_market_price * {usd_to_gbp} AS tcgplayer_normal_market_price_display_gbp,
+        tcgplayer_holofoil_market_price * {usd_to_gbp} AS tcgplayer_holofoil_market_price_display_gbp,
+        tcgplayer_reverse_holofoil_market_price * {usd_to_gbp} AS tcgplayer_reverse_holofoil_market_price_display_gbp,
+
+        cardmarket_avg * {eur_to_usd} AS cardmarket_avg_display_usd,
+        cardmarket_low * {eur_to_usd} AS cardmarket_low_display_usd,
+        cardmarket_trend * {eur_to_usd} AS cardmarket_trend_display_usd,
+        cardmarket_avg_holo * {eur_to_usd} AS cardmarket_avg_holo_display_usd,
+        cardmarket_low_holo * {eur_to_usd} AS cardmarket_low_holo_display_usd,
+        cardmarket_trend_holo * {eur_to_usd} AS cardmarket_trend_holo_display_usd,
+        tcgplayer_normal_market_price AS tcgplayer_normal_market_price_display_usd,
+        tcgplayer_holofoil_market_price AS tcgplayer_holofoil_market_price_display_usd,
+        tcgplayer_reverse_holofoil_market_price AS tcgplayer_reverse_holofoil_market_price_display_usd
+    FROM `pokemon-pacey32-github.pokemonApp.card_price_history`
+    WHERE card_id = '{safe_card_id}'
+    ORDER BY snapshot_timestamp DESC
+    LIMIT 1
+    """
+    df = run_query(sql)
+
+    if df.empty:
+        return df
+
+    return _select_display_currency_columns(df)

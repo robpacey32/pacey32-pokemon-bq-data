@@ -1,4 +1,5 @@
 import streamlit as st
+from datetime import datetime
 from auth import change_password
 from styles import apply_umbreon_theme
 from ui_auth import render_login_portal
@@ -27,14 +28,30 @@ else:
         created_at = user.get("created_at")
         last_login_at = user.get("last_login_at")
 
+        def format_dt(value):
+            if not value:
+                return "N/A"
+
+            if isinstance(value, datetime):
+                return value.strftime("%Y-%m-%d %H:%M")
+
+            try:
+                parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                return parsed.strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                return str(value)
+
+        created_at_fmt = format_dt(created_at)
+        last_login_at_fmt = format_dt(last_login_at)
+
         st.markdown(
             f"""
             <div class="account-kv">
                 <b>Username:</b> {user['username']}<br>
                 <b>Email:</b> {user['email']}<br>
                 <b>Display currency:</b> {st.session_state.display_currency}<br>
-                <b>Created:</b> {created_at if created_at else 'N/A'}<br>
-                <b>Last login:</b> {last_login_at if last_login_at else 'N/A'}<br>
+                <b>Created:</b> {created_at_fmt}<br>
+                <b>Last login:</b> {last_login_at_fmt}<br>
             </div>
             """,
             unsafe_allow_html=True,
