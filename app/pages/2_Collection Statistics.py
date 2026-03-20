@@ -40,9 +40,68 @@ def build_stats_base(cards_df: pd.DataFrame, user_df: pd.DataFrame, eur_to_displ
     df = cards_df.merge(user_df, on="card_id", how="left")
     df["owned"] = df["owned"].fillna(False)
 
-    df["value_eur"] = pd.to_numeric(df["cardmarket_trend"], errors="coerce").fillna(0)
-    df["value"] = df["value_eur"] * eur_to_display
-    df["owned_value"] = df["value"].where(df["owned"], 0)
+    for col in [
+        "owned_normal",
+        "owned_holo",
+        "owned_reverse",
+        "owned_first_edition",
+        "owned_w_promo",
+    ]:
+        if col not in df.columns:
+            df[col] = False
+        df[col] = df[col].fillna(False)
+
+    df["owned"] = (
+        df["owned_normal"] |
+        df["owned_holo"] |
+        df["owned_reverse"] |
+        df["owned_first_edition"] |
+        df["owned_w_promo"]
+    )
+
+    def calc_total_possible_value(row):
+        vals = []
+
+        if row.get("variant_normal") and pd.notnull(row.get("tcgplayer_normal_market_price_display")):
+            vals.append(float(row["tcgplayer_normal_market_price_display"]))
+
+        if row.get("variant_holo") and pd.notnull(row.get("tcgplayer_holofoil_market_price_display")):
+            vals.append(float(row["tcgplayer_holofoil_market_price_display"]))
+
+        if row.get("variant_reverse") and pd.notnull(row.get("tcgplayer_reverse_holofoil_market_price_display")):
+            vals.append(float(row["tcgplayer_reverse_holofoil_market_price_display"]))
+
+        return sum(vals)
+
+    def calc_owned_value(row):
+        total = 0.0
+
+        if row.get("owned_normal") and pd.notnull(row.get("tcgplayer_normal_market_price_display")):
+            total += float(row["tcgplayer_normal_market_price_display"])
+
+        if row.get("owned_holo") and pd.notnull(row.get("tcgplayer_holofoil_market_price_display")):
+            total += float(row["tcgplayer_holofoil_market_price_display"])
+
+        if row.get("owned_reverse") and pd.notnull(row.get("tcgplayer_reverse_holofoil_market_price_display")):
+            total += float(row["tcgplayer_reverse_holofoil_market_price_display"])
+
+        if row.get("owned_first_edition") or row.get("owned_w_promo"):
+            promo_vals = []
+            for col in [
+                "tcgplayer_normal_market_price_display",
+                "tcgplayer_holofoil_market_price_display",
+                "tcgplayer_reverse_holofoil_market_price_display",
+            ]:
+                val = row.get(col)
+                if pd.notnull(val):
+                    promo_vals.append(float(val))
+            if promo_vals:
+                total += max(promo_vals)
+
+        return total
+
+    df["value"] = df.apply(calc_total_possible_value, axis=1)
+    df["owned_value"] = df.apply(calc_owned_value, axis=1)
 
     return df
 

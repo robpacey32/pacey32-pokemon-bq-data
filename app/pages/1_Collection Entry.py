@@ -7,12 +7,11 @@ from db_bigquery import (
     get_series_list,
     get_set_list,
     get_card_master,
-    get_fx_rate,
     get_card_detail_by_id,
     get_card_price_history,
     get_card_latest_variant_prices,
 )
-from db_mongo import get_user_owned_card_ids, upsert_user_card
+from db_mongo import get_user_card_variants, upsert_user_card_variants
 from styles import apply_umbreon_theme
 
 st.set_page_config(page_title="Collection Entry", layout="wide")
@@ -28,6 +27,12 @@ if "display_currency" not in st.session_state:
 
 if "selected_card_id" not in st.session_state:
     st.session_state.selected_card_id = None
+
+if "page_number" not in st.session_state:
+    st.session_state.page_number = 1
+
+if "last_filter_key" not in st.session_state:
+    st.session_state.last_filter_key = None
 
 user_id = st.session_state.user["user_id"]
 
@@ -48,6 +53,77 @@ def format_money(value, symbol):
     if pd.isna(value):
         return "N/A"
     return f"{symbol}{float(value):,.2f}"
+
+
+def get_card_owned_value(row, owned_map):
+    total = 0.0
+
+    if owned_map.get("owned_normal", False):
+        normal_val = row.get("tcgplayer_normal_market_price_display")
+        if pd.notnull(normal_val):
+            total += float(normal_val)
+
+    if owned_map.get("owned_holo", False):
+        holo_val = row.get("tcgplayer_holofoil_market_price_display")
+        if pd.notnull(holo_val):
+            total += float(holo_val)
+
+    if owned_map.get("owned_reverse", False):
+        reverse_val = row.get("tcgplayer_reverse_holofoil_market_price_display")
+        if pd.notnull(reverse_val):
+            total += float(reverse_val)
+
+    if owned_map.get("owned_first_edition", False):
+        fallback_vals = []
+        for col in [
+            "tcgplayer_normal_market_price_display",
+            "tcgplayer_holofoil_market_price_display",
+            "tcgplayer_reverse_holofoil_market_price_display",
+        ]:
+            val = row.get(col)
+            if pd.notnull(val):
+                fallback_vals.append(float(val))
+        if fallback_vals:
+            total += max(fallback_vals)
+
+    if owned_map.get("owned_w_promo", False):
+        fallback_vals = []
+        for col in [
+            "tcgplayer_normal_market_price_display",
+            "tcgplayer_holofoil_market_price_display",
+            "tcgplayer_reverse_holofoil_market_price_display",
+        ]:
+            val = row.get(col)
+            if pd.notnull(val):
+                fallback_vals.append(float(val))
+        if fallback_vals:
+            total += max(fallback_vals)
+
+    return total
+
+
+def get_card_max_tcgplayer_price(row):
+    candidates = []
+
+    if row.get("variant_normal"):
+        val = row.get("tcgplayer_normal_market_price_display")
+        if pd.notnull(val):
+            candidates.append(float(val))
+
+    if row.get("variant_holo"):
+        val = row.get("tcgplayer_holofoil_market_price_display")
+        if pd.notnull(val):
+            candidates.append(float(val))
+
+    if row.get("variant_reverse"):
+        val = row.get("tcgplayer_reverse_holofoil_market_price_display")
+        if pd.notnull(val):
+            candidates.append(float(val))
+
+    if not candidates:
+        return None
+
+    return max(candidates)
 
 
 def render_card_detail_panel(card_id, display_currency, symbol):
@@ -96,17 +172,28 @@ def render_card_detail_panel(card_id, display_currency, symbol):
     else:
         v = latest_variant_df.iloc[0]
 
-        variant_rows = [
-            ["CardMarket Avg", format_money(v.get("cardmarket_avg_display"), symbol)],
-            ["CardMarket Low", format_money(v.get("cardmarket_low_display"), symbol)],
-            ["CardMarket Trend", format_money(v.get("cardmarket_trend_display"), symbol)],
-            ["CardMarket Holo Avg", format_money(v.get("cardmarket_avg_holo_display"), symbol)],
-            ["CardMarket Holo Low", format_money(v.get("cardmarket_low_holo_display"), symbol)],
-            ["CardMarket Holo Trend", format_money(v.get("cardmarket_trend_holo_display"), symbol)],
-            ["TCGPlayer Normal", format_money(v.get("tcgplayer_normal_market_price_display"), symbol)],
-            ["TCGPlayer Holofoil", format_money(v.get("tcgplayer_holofoil_market_price_display"), symbol)],
-            ["TCGPlayer Reverse Holofoil", format_money(v.get("tcgplayer_reverse_holofoil_market_price_display"), symbol)],
-        ]
+        variant_rows = []
+
+        if row.get("variant_normal"):
+            variant_rows.append([
+                "TCGPlayer Normal",
+                format_money(v.get("tcgplayer_normal_market_price_display"), symbol)
+            ])
+
+        if row.get("variant_holo"):
+            variant_rows.append([
+                "TCGPlayer Holofoil",
+                format_money(v.get("tcgplayer_holofoil_market_price_display"), symbol)
+            ])
+
+        if row.get("variant_reverse"):
+            variant_rows.append([
+                "TCGPlayer Reverse Holofoil",
+                format_money(v.get("tcgplayer_reverse_holofoil_market_price_display"), symbol)
+            ])
+
+        if not variant_rows:
+            variant_rows = [["TCGPlayer", "N/A"]]
 
         variant_df = pd.DataFrame(variant_rows, columns=["Variant", "Value"])
         st.dataframe(variant_df, use_container_width=True, hide_index=True)
@@ -116,12 +203,6 @@ def render_card_detail_panel(card_id, display_currency, symbol):
         st.info("No historic pricing available yet.")
     else:
         chart_cols = [
-            "cardmarket_avg_display",
-            "cardmarket_low_display",
-            "cardmarket_trend_display",
-            "cardmarket_avg_holo_display",
-            "cardmarket_low_holo_display",
-            "cardmarket_trend_holo_display",
             "tcgplayer_normal_market_price_display",
             "tcgplayer_holofoil_market_price_display",
             "tcgplayer_reverse_holofoil_market_price_display",
@@ -138,31 +219,35 @@ def render_card_detail_panel(card_id, display_currency, symbol):
             st.info("No chartable price history available.")
         else:
             label_map = {
-                "cardmarket_avg_display": "CardMarket Avg",
-                "cardmarket_low_display": "CardMarket Low",
-                "cardmarket_trend_display": "CardMarket Trend",
-                "cardmarket_avg_holo_display": "CardMarket Holo Avg",
-                "cardmarket_low_holo_display": "CardMarket Holo Low",
-                "cardmarket_trend_holo_display": "CardMarket Holo Trend",
                 "tcgplayer_normal_market_price_display": "TCGPlayer Normal",
                 "tcgplayer_holofoil_market_price_display": "TCGPlayer Holofoil",
                 "tcgplayer_reverse_holofoil_market_price_display": "TCGPlayer Reverse Holofoil",
             }
             chart_long["price_type"] = chart_long["price_type"].map(label_map)
+            chart_long["snapshot_date"] = pd.to_datetime(
+                chart_long["snapshot_timestamp"]
+            ).dt.date
 
             fig = px.line(
                 chart_long,
-                x="snapshot_timestamp",
+                x="snapshot_date",
                 y="price_value",
                 color="price_type",
                 title=f"Historic Prices ({display_currency})",
+                markers=True,
+            )
+            fig.update_traces(
+                hovertemplate="%{y:.2f}<extra></extra>"
             )
             fig.update_layout(
                 xaxis_title="Snapshot Date",
                 yaxis_title=f"Price ({display_currency})",
+                legend_title_text="Key",
                 margin=dict(l=20, r=20, t=50, b=20),
             )
+            fig.update_xaxes(type="category")
             st.plotly_chart(fig, use_container_width=True)
+
 
 with st.sidebar:
     st.subheader("Filters")
@@ -174,7 +259,12 @@ with st.sidebar:
     selected_set = st.selectbox("Set", set_options)
 
     card_name_search = st.text_input("Card name contains")
-    row_limit = st.selectbox("Rows to show", [50, 100, 250, 500], index=1)
+    row_limit = st.selectbox("Rows per page", [25, 50, 100, 250, 500], index=1)
+
+    filter_key = f"{selected_series}_{selected_set}_{card_name_search}_{row_limit}"
+    if st.session_state.last_filter_key != filter_key:
+        st.session_state.page_number = 1
+        st.session_state.last_filter_key = filter_key
 
 display_currency = st.session_state.display_currency
 
@@ -185,61 +275,117 @@ currency_symbols = {
 }
 symbol = currency_symbols.get(display_currency, display_currency)
 
+# Sticky detail panel at top
 if st.session_state.selected_card_id:
+    st.markdown(
+        """
+        <div style="
+            position: sticky;
+            top: 0;
+            z-index: 999;
+            background: #020303;
+            padding-top: 8px;
+            padding-bottom: 8px;
+        ">
+        """,
+        unsafe_allow_html=True
+    )
+
     render_card_detail_panel(
         st.session_state.selected_card_id,
         display_currency,
         symbol,
     )
 
-    if st.button("Close card detail"):
-        st.session_state.selected_card_id = None
-        st.rerun()
+    close_col1, close_col2 = st.columns([6, 1])
+    with close_col2:
+        if st.button("Close", key="close_detail_panel"):
+            st.session_state.selected_card_id = None
+            st.rerun()
 
+    st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("---")
+
+offset = (st.session_state.page_number - 1) * row_limit
 
 df = get_card_master(
     series_name=selected_series,
     set_name=selected_set,
     card_name_search=card_name_search,
     limit=row_limit,
+    offset=offset,
     display_currency=display_currency,
 )
 
-owned_ids = get_user_owned_card_ids(user_id)
+user_variant_map = get_user_card_variants(user_id)
 
-st.markdown(f"### Showing {len(df)} cards")
+start_row = offset + 1 if len(df) > 0 else 0
+end_row = offset + len(df)
+
+nav1, nav2, nav3 = st.columns([1, 2, 1])
+
+with nav1:
+    if st.button("◀ Prev", key="prev_page_main"):
+        if st.session_state.page_number > 1:
+            st.session_state.page_number -= 1
+            st.rerun()
+
+with nav2:
+    st.markdown(
+        f"<div style='text-align:center; font-size: 1.5rem; font-weight: 700;'>Showing cards {start_row}–{end_row}</div>"
+        f"<div style='text-align:center;'>Page {st.session_state.page_number}</div>",
+        unsafe_allow_html=True
+    )
+
+with nav3:
+    if st.button("Next ▶", key="next_page_main"):
+        if len(df) == row_limit:
+            st.session_state.page_number += 1
+            st.rerun()
 
 for _, row in df.iterrows():
     card_id = row["card_id"]
-    current_owned = card_id in owned_ids
+    is_selected = card_id == st.session_state.selected_card_id
 
-    value_text = "CardMarket Price: N/A"
-    if pd.notnull(row.get("cardmarket_trend_display")):
-        value_text = f"CardMarket Price: {symbol}{float(row['cardmarket_trend_display']):,.2f}"
+    current_variants = user_variant_map.get(
+        card_id,
+        {
+            "owned_normal": False,
+            "owned_holo": False,
+            "owned_reverse": False,
+            "owned_first_edition": False,
+            "owned_w_promo": False,
+        }
+    )
 
-    st.markdown('<div class="card-shell">', unsafe_allow_html=True)
-    col1, col2, col3, col4 = st.columns([0.7, 1.1, 4.6, 1.2])
+    owned_value = get_card_owned_value(row, current_variants)
+    max_tcgplayer_price = get_card_max_tcgplayer_price(row)
+
+    if owned_value > 0:
+        value_text = f"Owned Value: {symbol}{owned_value:,.2f}"
+    elif max_tcgplayer_price is not None:
+        value_text = f"TCGPlayer Price: {symbol}{max_tcgplayer_price:,.2f}"
+    else:
+        value_text = "TCGPlayer Price: N/A"
+
+    if is_selected:
+        st.markdown(
+            '<div class="card-shell" style="border: 2px solid #F4D995;">',
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown('<div class="card-shell">', unsafe_allow_html=True)
+
+    col1, col2, col3, col4 = st.columns([1.1, 4.2, 1.6, 1.2])
 
     with col1:
-        new_owned = st.checkbox(
-            "Owned",
-            value=current_owned,
-            key=f"owned_{card_id}",
-            label_visibility="collapsed"
-        )
-        if new_owned != current_owned:
-            upsert_user_card(user_id, card_id, new_owned)
-            st.rerun()
-
-    with col2:
         final_image_url = build_card_image_url(row["image_url"])
         if final_image_url:
-            st.image(final_image_url, width=92)
+            st.image(final_image_url, width=110)
         else:
             st.write("No image")
 
-    with col3:
+    with col2:
         series_text = row["series_name"] if row["series_name"] else "Unknown Series"
         set_text = row["set_name"] if row["set_name"] else "Unknown Set"
         st.markdown(
@@ -252,6 +398,48 @@ for _, row in df.iterrows():
             """,
             unsafe_allow_html=True,
         )
+
+    with col3:
+        variant_updates = current_variants.copy()
+
+        if row.get("variant_normal"):
+            variant_updates["owned_normal"] = st.checkbox(
+                "Normal",
+                value=current_variants["owned_normal"],
+                key=f"normal_{card_id}"
+            )
+
+        if row.get("variant_holo"):
+            variant_updates["owned_holo"] = st.checkbox(
+                "Holo",
+                value=current_variants["owned_holo"],
+                key=f"holo_{card_id}"
+            )
+
+        if row.get("variant_reverse"):
+            variant_updates["owned_reverse"] = st.checkbox(
+                "Reverse",
+                value=current_variants["owned_reverse"],
+                key=f"reverse_{card_id}"
+            )
+
+        if row.get("variant_first_edition"):
+            variant_updates["owned_first_edition"] = st.checkbox(
+                "1st Ed",
+                value=current_variants["owned_first_edition"],
+                key=f"firsted_{card_id}"
+            )
+
+        if row.get("variant_w_promo"):
+            variant_updates["owned_w_promo"] = st.checkbox(
+                "Promo",
+                value=current_variants["owned_w_promo"],
+                key=f"wpromo_{card_id}"
+            )
+
+        if variant_updates != current_variants:
+            upsert_user_card_variants(user_id, card_id, variant_updates)
+            st.rerun()
 
     with col4:
         if st.button("View details", key=f"detail_{card_id}"):
