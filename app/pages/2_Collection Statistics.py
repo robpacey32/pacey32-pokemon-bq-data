@@ -21,9 +21,6 @@ user_id = st.session_state.user["user_id"]
 
 st.title("Collection Statistics")
 
-#with st.sidebar:
-#    st.subheader("Display")
-
 display_currency = st.session_state.display_currency
 eur_to_display = get_fx_rate("EUR", display_currency)
 
@@ -37,8 +34,37 @@ symbol = currency_symbols.get(display_currency, display_currency)
 
 @st.cache_data(ttl=300, show_spinner=False)
 def build_stats_base(cards_df: pd.DataFrame, user_df: pd.DataFrame, eur_to_display: float) -> pd.DataFrame:
-    df = cards_df.merge(user_df, on="card_id", how="left")
-    df["owned"] = df["owned"].fillna(False)
+    df = cards_df.copy()
+
+    if user_df is None:
+        user_df = pd.DataFrame()
+
+    # Mongo now stores ownership by variant, not a top-level owned field
+    required_user_defaults = {
+        "card_id": pd.NA,
+        "owned_normal": False,
+        "owned_holo": False,
+        "owned_reverse": False,
+        "owned_first_edition": False,
+        "owned_w_promo": False,
+    }
+
+    for col, default in required_user_defaults.items():
+        if col not in user_df.columns:
+            user_df[col] = default
+
+    user_df = user_df[
+        [
+            "card_id",
+            "owned_normal",
+            "owned_holo",
+            "owned_reverse",
+            "owned_first_edition",
+            "owned_w_promo",
+        ]
+    ].copy()
+
+    df = df.merge(user_df, on="card_id", how="left")
 
     for col in [
         "owned_normal",
@@ -49,26 +75,49 @@ def build_stats_base(cards_df: pd.DataFrame, user_df: pd.DataFrame, eur_to_displ
     ]:
         if col not in df.columns:
             df[col] = False
-        df[col] = df[col].fillna(False)
+        df[col] = df[col].fillna(False).astype(bool)
 
+    # Derive owned from any owned variant
     df["owned"] = (
-        df["owned_normal"] |
-        df["owned_holo"] |
-        df["owned_reverse"] |
-        df["owned_first_edition"] |
-        df["owned_w_promo"]
+        df["owned_normal"]
+        | df["owned_holo"]
+        | df["owned_reverse"]
+        | df["owned_first_edition"]
+        | df["owned_w_promo"]
     )
+
+    # Ensure variant flags exist
+    for col in [
+        "variant_normal",
+        "variant_holo",
+        "variant_reverse",
+    ]:
+        if col not in df.columns:
+            df[col] = False
+        df[col] = df[col].fillna(False).astype(bool)
+
+    # Ensure price columns exist and are numeric
+    price_cols = [
+        "tcgplayer_normal_market_price_display",
+        "tcgplayer_holofoil_market_price_display",
+        "tcgplayer_reverse_holofoil_market_price_display",
+    ]
+
+    for col in price_cols:
+        if col not in df.columns:
+            df[col] = pd.NA
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
     def calc_total_possible_value(row):
         vals = []
 
-        if row.get("variant_normal") and pd.notnull(row.get("tcgplayer_normal_market_price_display")):
+        if row.get("variant_normal", False) and pd.notnull(row.get("tcgplayer_normal_market_price_display")):
             vals.append(float(row["tcgplayer_normal_market_price_display"]))
 
-        if row.get("variant_holo") and pd.notnull(row.get("tcgplayer_holofoil_market_price_display")):
+        if row.get("variant_holo", False) and pd.notnull(row.get("tcgplayer_holofoil_market_price_display")):
             vals.append(float(row["tcgplayer_holofoil_market_price_display"]))
 
-        if row.get("variant_reverse") and pd.notnull(row.get("tcgplayer_reverse_holofoil_market_price_display")):
+        if row.get("variant_reverse", False) and pd.notnull(row.get("tcgplayer_reverse_holofoil_market_price_display")):
             vals.append(float(row["tcgplayer_reverse_holofoil_market_price_display"]))
 
         return sum(vals)
@@ -76,22 +125,18 @@ def build_stats_base(cards_df: pd.DataFrame, user_df: pd.DataFrame, eur_to_displ
     def calc_owned_value(row):
         total = 0.0
 
-        if row.get("owned_normal") and pd.notnull(row.get("tcgplayer_normal_market_price_display")):
+        if row.get("owned_normal", False) and pd.notnull(row.get("tcgplayer_normal_market_price_display")):
             total += float(row["tcgplayer_normal_market_price_display"])
 
-        if row.get("owned_holo") and pd.notnull(row.get("tcgplayer_holofoil_market_price_display")):
+        if row.get("owned_holo", False) and pd.notnull(row.get("tcgplayer_holofoil_market_price_display")):
             total += float(row["tcgplayer_holofoil_market_price_display"])
 
-        if row.get("owned_reverse") and pd.notnull(row.get("tcgplayer_reverse_holofoil_market_price_display")):
+        if row.get("owned_reverse", False) and pd.notnull(row.get("tcgplayer_reverse_holofoil_market_price_display")):
             total += float(row["tcgplayer_reverse_holofoil_market_price_display"])
 
-        if row.get("owned_first_edition") or row.get("owned_w_promo"):
+        if row.get("owned_first_edition", False) or row.get("owned_w_promo", False):
             promo_vals = []
-            for col in [
-                "tcgplayer_normal_market_price_display",
-                "tcgplayer_holofoil_market_price_display",
-                "tcgplayer_reverse_holofoil_market_price_display",
-            ]:
+            for col in price_cols:
                 val = row.get(col)
                 if pd.notnull(val):
                     promo_vals.append(float(val))
@@ -161,8 +206,8 @@ def build_set_stats(df: pd.DataFrame, selected_series: str) -> pd.DataFrame:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def build_top_owned_table(owned_df: pd.DataFrame, symbol: str) -> pd.DataFrame:
-    top_owned = owned_df.sort_values("value", ascending=False).head(10).copy()
-    top_owned["formatted_value"] = top_owned["value"].apply(
+    top_owned = owned_df.sort_values("owned_value", ascending=False).head(10).copy()
+    top_owned["formatted_value"] = top_owned["owned_value"].apply(
         lambda x: f"{symbol}{x:,.2f}" if pd.notnull(x) else f"{symbol}0.00"
     )
 
@@ -184,8 +229,12 @@ def build_top_owned_table(owned_df: pd.DataFrame, symbol: str) -> pd.DataFrame:
 cards_df = get_card_master(display_currency=display_currency)
 user_df = get_user_cards_df(user_id)
 
-if user_df.empty:
-    user_df = pd.DataFrame(columns=["card_id", "owned"])
+if cards_df is None or cards_df.empty:
+    st.warning("No card master data is available.")
+    st.stop()
+
+if user_df is None:
+    user_df = pd.DataFrame()
 
 df = build_stats_base(cards_df, user_df, eur_to_display)
 
@@ -193,9 +242,9 @@ df = build_stats_base(cards_df, user_df, eur_to_display)
 # TOP METRICS
 # -------------------------
 total_cards = len(df)
-owned_cards = int(df["owned"].sum())
+owned_cards = int(df["owned"].sum()) if "owned" in df.columns else 0
 pct_complete = (owned_cards / total_cards * 100) if total_cards > 0 else 0
-collection_value = df.loc[df["owned"] == True, "value"].sum()
+collection_value = df["owned_value"].sum() if "owned_value" in df.columns else 0
 
 col1, col2, col3 = st.columns(3)
 col1.metric("Cards Owned", f"{owned_cards:,}")
@@ -227,8 +276,6 @@ else:
     chart_title = "Series completion by value"
 
 series_stats = series_stats.sort_values(chart_col, ascending=True)
-
-# Optional: cap to top 30 series for faster chart rendering
 series_chart_df = series_stats.tail(30).copy()
 
 fig_series = px.bar(
