@@ -126,7 +126,7 @@ def get_card_max_tcgplayer_price(row):
     return max(candidates)
 
 
-def render_card_detail_panel(card_id, display_currency, symbol):
+def render_card_detail_content(card_id, display_currency, symbol):
     detail_df = get_card_detail_by_id(card_id)
     history_df = get_card_price_history(card_id)
     latest_variant_df = get_card_latest_variant_prices(card_id)
@@ -136,9 +136,6 @@ def render_card_detail_panel(card_id, display_currency, symbol):
         return
 
     row = detail_df.iloc[0]
-
-    st.markdown("## Card Detail")
-    st.markdown('<div class="section-shell">', unsafe_allow_html=True)
 
     col1, col2 = st.columns([1.2, 3])
 
@@ -163,8 +160,6 @@ def render_card_detail_panel(card_id, display_currency, symbol):
         st.write(f"**Regulation mark:** {row.get('regulation_mark')}")
         if pd.notnull(row.get("description")):
             st.write(f"**Description:** {row.get('description')}")
-
-    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("### Latest Variant Prices")
     if latest_variant_df.empty:
@@ -249,6 +244,15 @@ def render_card_detail_panel(card_id, display_currency, symbol):
             st.plotly_chart(fig, use_container_width=True)
 
 
+@st.dialog("Card Detail", width="large")
+def show_card_detail_dialog(card_id, display_currency, symbol):
+    render_card_detail_content(card_id, display_currency, symbol)
+
+    if st.button("Close", key="close_card_detail_dialog"):
+        st.session_state.selected_card_id = None
+        st.rerun()
+
+
 with st.sidebar:
     st.subheader("Filters")
 
@@ -274,37 +278,6 @@ currency_symbols = {
     "USD": "$"
 }
 symbol = currency_symbols.get(display_currency, display_currency)
-
-# Sticky detail panel at top
-if st.session_state.selected_card_id:
-    st.markdown(
-        """
-        <div style="
-            position: sticky;
-            top: 0;
-            z-index: 999;
-            background: #020303;
-            padding-top: 8px;
-            padding-bottom: 8px;
-        ">
-        """,
-        unsafe_allow_html=True
-    )
-
-    render_card_detail_panel(
-        st.session_state.selected_card_id,
-        display_currency,
-        symbol,
-    )
-
-    close_col1, close_col2 = st.columns([6, 1])
-    with close_col2:
-        if st.button("Close", key="close_detail_panel"):
-            st.session_state.selected_card_id = None
-            st.rerun()
-
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("---")
 
 offset = (st.session_state.page_number - 1) * row_limit
 
@@ -447,3 +420,10 @@ for _, row in df.iterrows():
             st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+if st.session_state.selected_card_id:
+    show_card_detail_dialog(
+        st.session_state.selected_card_id,
+        display_currency,
+        symbol,
+    )

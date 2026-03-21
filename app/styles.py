@@ -12,6 +12,8 @@ def apply_umbreon_theme():
             --muted: #4A575D;
             --muted-2: #566574;
             --gold: #F4D995;
+            --gold-2: #e9ca78;
+            --gold-3: #f7e4aa;
             --ember: #E07451;
             --text: #F7F7F5;
             --soft-border: rgba(244, 217, 149, 0.18);
@@ -81,20 +83,38 @@ def apply_umbreon_theme():
             padding: 12px 14px;
         }
 
-        /* Buttons */
-        .stButton > button, .stFormSubmitButton > button {
-            background: linear-gradient(180deg, var(--gold), #e9ca78);
+        /* Primary app buttons */
+        .stButton > button,
+        .stFormSubmitButton > button,
+        button[kind="primary"] {
+            background: linear-gradient(180deg, var(--gold), var(--gold-2)) !important;
             color: #111 !important;
-            border: none;
-            border-radius: 12px;
-            font-weight: 700;
+            border: none !important;
+            border-radius: 12px !important;
+            font-weight: 700 !important;
         }
 
-        .stButton > button:hover, .stFormSubmitButton > button:hover {
-            background: linear-gradient(180deg, #f7e4aa, var(--gold));
+        .stButton > button:hover,
+        .stFormSubmitButton > button:hover,
+        button[kind="primary"]:hover {
+            background: linear-gradient(180deg, var(--gold-3), var(--gold)) !important;
             color: #111 !important;
         }
 
+        .stButton > button *,
+        .stFormSubmitButton > button *,
+        button[kind="primary"] * {
+            color: #111 !important;
+            fill: #111 !important;
+        }
+
+        /* Secondary buttons */
+        button[kind="secondary"] {
+            border-radius: 12px !important;
+            border: 1px solid var(--soft-border) !important;
+        }
+
+        /* Sidebar */
         section[data-testid="stSidebar"] {
             background: linear-gradient(180deg, #090d10 0%, #11161b 100%);
             border-right: 1px solid var(--soft-border);
@@ -104,9 +124,7 @@ def apply_umbreon_theme():
             border-color: rgba(244, 217, 149, 0.15);
         }
 
-        /* === REMOVE "Press Enter to submit form" === */
-
-        /* Standard helper text */
+        /* Remove text input helper text */
         div[data-testid="stTextInput"] small,
         div[data-testid="stTextInput"] [aria-live="polite"] {
             display: none !important;
@@ -114,22 +132,68 @@ def apply_umbreon_theme():
             height: 0 !important;
         }
 
-        /* Newer Streamlit versions */
         div[data-testid="stTextInput"] [data-testid="InputInstructions"] {
             display: none !important;
         }
 
-        /* Aggressive fallback: removes right-side hint inside input */
         div[data-testid="stTextInput"] div[style*="justify-content: space-between"] {
             display: none !important;
         }
 
-        /* Ensure button text is always visible */
-        button, button * {
-            color: #020303 !important;
-            fill: #020303 !important;
+        /* Header / hamburger / menu icons */
+        header button,
+        [data-testid="collapsedControl"] button,
+        [data-testid="stBaseButton-headerNoPadding"] {
+            color: var(--gold) !important;
+            background: transparent !important;
+            border: none !important;
         }
 
+        header button svg,
+        [data-testid="collapsedControl"] button svg,
+        [data-testid="stBaseButton-headerNoPadding"] svg {
+            color: var(--gold) !important;
+            fill: var(--gold) !important;
+        }
+
+        header button:hover,
+        [data-testid="collapsedControl"] button:hover,
+        [data-testid="stBaseButton-headerNoPadding"]:hover {
+            background: rgba(244, 217, 149, 0.10) !important;
+            border-radius: 10px !important;
+        }
+
+        /* Tabs - good for Sign in / Sign up */
+        button[role="tab"] {
+            background: linear-gradient(180deg, var(--gold), var(--gold-2)) !important;
+            color: #111 !important;
+            border: none !important;
+            border-radius: 999px !important;
+            font-weight: 700 !important;
+            padding: 0.45rem 1rem !important;
+            margin-right: 0.35rem !important;
+        }
+
+        button[role="tab"] * {
+            color: #111 !important;
+            fill: #111 !important;
+        }
+
+        button[role="tab"][aria-selected="true"] {
+            background: linear-gradient(180deg, var(--gold-3), var(--gold)) !important;
+            color: #111 !important;
+            box-shadow: 0 0 0 1px rgba(244, 217, 149, 0.25) inset !important;
+        }
+
+        /* Keep tab row clean */
+        [data-baseweb="tab-list"] {
+            gap: 0.25rem;
+        }
+
+        /* Links */
+        a {
+            color: var(--gold) !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
