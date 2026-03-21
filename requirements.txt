@@ -11,3 +11,6 @@ streamlit
 bcrypt
 plotly
 streamlit-cookies-manager
+streamlit-local-storage
+python-dotenv
+dnspython

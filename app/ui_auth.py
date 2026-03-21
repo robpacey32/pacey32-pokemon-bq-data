@@ -1,7 +1,7 @@
 import streamlit as st
 from streamlit_local_storage import LocalStorage
 
-from auth import register_user, login_user
+from auth import register_user, login_user, request_password_reset
 from db_mongo import (
     create_user_session,
     get_user_session_by_token,
@@ -9,6 +9,7 @@ from db_mongo import (
     extend_user_session,
     get_user_by_username,
 )
+from email_utils import send_verification_email, send_password_reset_email
 from styles import apply_umbreon_theme
 
 SESSION_DAYS = 30
@@ -89,6 +90,9 @@ def render_login_portal(show_title: bool = True):
     if "display_currency" not in st.session_state:
         st.session_state.display_currency = "GBP"
 
+    if "show_reset" not in st.session_state:
+        st.session_state.show_reset = False
+
     if show_title:
         st.title("Account")
 
@@ -104,7 +108,7 @@ def render_login_portal(show_title: bool = True):
             login_submitted = st.form_submit_button("Login")
 
         if login_submitted:
-            user = login_user(username, password)
+            user, error = login_user(username, password)
 
             if user:
                 session_user = {
@@ -123,7 +127,21 @@ def render_login_portal(show_title: bool = True):
 
                 st.rerun()
             else:
-                st.error("Invalid username or password")
+                st.error(error)
+
+        if st.button("Forgot password?"):
+            st.session_state.show_reset = True
+
+        if st.session_state.get("show_reset"):
+            reset_email = st.text_input("Enter your email to reset password", key="reset_email")
+
+            if st.button("Send reset link"):
+                ok, token = request_password_reset(reset_email)
+
+                if ok and token:
+                    send_password_reset_email(reset_email.strip().lower(), token)
+
+                st.success("If that email exists, a reset link has been sent.")
 
     with tab2:
         with st.form("register_form"):
@@ -133,8 +151,10 @@ def render_login_portal(show_title: bool = True):
             register_submitted = st.form_submit_button("Register")
 
         if register_submitted:
-            ok, msg = register_user(username, email, password)
+            ok, msg, token = register_user(username, email, password)
+
             if ok:
+                send_verification_email(email.strip().lower(), token)
                 st.success(msg)
             else:
                 st.error(msg)
