@@ -1,79 +1,87 @@
-import os
 import streamlit as st
-from streamlit_cookies_manager import EncryptedCookieManager
+from streamlit_local_storage import LocalStorage
 
 from auth import register_user, login_user
+from db_mongo import (
+    create_user_session,
+    get_user_session_by_token,
+    delete_user_session_by_token,
+    extend_user_session,
+    get_user_by_username,
+)
 from styles import apply_umbreon_theme
 
-cookies = EncryptedCookieManager(
-    prefix="poketcg_app",
-    password=os.environ.get("COOKIE_PASSWORD", "local-dev-cookie-password"),
-)
+SESSION_DAYS = 30
+SESSION_STORAGE_KEY = "session_token"
 
 
-def cookies_ready() -> bool:
-    try:
-        return cookies.ready()
-    except Exception:
-        return False
+def get_local_storage():
+    return LocalStorage()
 
 
-def restore_login_from_cookie():
+def restore_login_from_storage():
     if "user" not in st.session_state:
         st.session_state.user = None
 
     if "display_currency" not in st.session_state:
         st.session_state.display_currency = "GBP"
 
-    if not cookies_ready():
-        return
+    localS = get_local_storage()
+    token = localS.getItem(SESSION_STORAGE_KEY)
 
-    username = cookies.get("user_username")
-    if st.session_state.user is None and username:
-        st.session_state.user = {
-            "username": username,
-            "email": cookies.get("user_email"),
-            "user_id": cookies.get("user_id"),
-            "created_at": cookies.get("created_at"),
-            "last_login_at": cookies.get("last_login_at"),
-            "display_currency": cookies.get("display_currency", "GBP"),
-        }
-        st.session_state.display_currency = cookies.get("display_currency", "GBP")
+    if not token:
+        return False
+
+    session_doc = get_user_session_by_token(token)
+    if not session_doc:
+        return False
+
+    username = session_doc.get("username")
+    if not username:
+        return False
+
+    user = get_user_by_username(username)
+    if not user:
+        return False
+
+    extend_user_session(token, days=SESSION_DAYS)
+
+    st.session_state.user = {
+        "username": user["username"],
+        "email": user.get("email"),
+        "user_id": user["username"],
+        "display_currency": user.get("display_currency", "GBP"),
+    }
+    st.session_state.display_currency = user.get("display_currency", "GBP")
+    return True
 
 
-def save_login_cookie(user: dict):
-    if not cookies_ready():
-        return
-
-    cookies["user_username"] = user.get("username", "")
-    cookies["user_email"] = user.get("email", "")
-    cookies["user_id"] = user.get("user_id", "")
-    cookies["created_at"] = str(user.get("created_at", "")) if user.get("created_at") else ""
-    cookies["last_login_at"] = str(user.get("last_login_at", "")) if user.get("last_login_at") else ""
-    cookies["display_currency"] = user.get("display_currency", "GBP")
-    cookies.save()
+def save_session_to_storage(token: str):
+    import time
+    localS = get_local_storage()
+    localS.setItem(SESSION_STORAGE_KEY, token)
+    time.sleep(2)
 
 
-def clear_login_cookie():
-    if not cookies_ready():
-        return
+def clear_session_from_storage():
+    localS = get_local_storage()
+    localS.deleteItem(SESSION_STORAGE_KEY)
 
-    for key in [
-        "user_username",
-        "user_email",
-        "user_id",
-        "created_at",
-        "last_login_at",
-        "display_currency",
-    ]:
-        if key in cookies:
-            del cookies[key]
-    cookies.save()
+
+def logout():
+    localS = get_local_storage()
+    token = localS.getItem(SESSION_STORAGE_KEY)
+
+    if token:
+        delete_user_session_by_token(token)
+
+    clear_session_from_storage()
+    st.session_state.user = None
+    st.session_state.display_currency = "GBP"
 
 
 def render_login_portal(show_title: bool = True):
     apply_umbreon_theme()
-    restore_login_from_cookie()
 
     if "user" not in st.session_state:
         st.session_state.user = None
@@ -92,23 +100,27 @@ def render_login_portal(show_title: bool = True):
         with st.form("login_form"):
             username = st.text_input("Username", key="login_username")
             password = st.text_input("Password", type="password", key="login_password")
+            keep_signed_in = st.checkbox("Keep me signed in", value=True)
             login_submitted = st.form_submit_button("Login")
 
         if login_submitted:
             user = login_user(username, password)
+
             if user:
                 session_user = {
                     "username": user["username"],
-                    "email": user["email"],
+                    "email": user.get("email"),
                     "user_id": user["username"],
-                    "created_at": user.get("created_at"),
-                    "last_login_at": user.get("last_login_at"),
                     "display_currency": user.get("display_currency", "GBP"),
                 }
 
                 st.session_state.user = session_user
-                st.session_state.display_currency = user.get("display_currency", "GBP")
-                save_login_cookie(session_user)
+                st.session_state.display_currency = session_user["display_currency"]
+
+                if keep_signed_in:
+                    token = create_user_session(user["username"], days=SESSION_DAYS)
+                    save_session_to_storage(token)
+
                 st.rerun()
             else:
                 st.error("Invalid username or password")

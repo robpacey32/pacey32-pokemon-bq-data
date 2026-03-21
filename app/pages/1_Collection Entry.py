@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from ui_auth import render_login_portal, restore_login_from_cookie
+from ui_auth import render_login_portal, restore_login_from_storage
 
 from db_bigquery import (
     get_series_list,
@@ -16,7 +16,7 @@ from styles import apply_umbreon_theme
 
 st.set_page_config(page_title="Collection Entry", layout="wide")
 apply_umbreon_theme()
-restore_login_from_cookie()
+restore_login_from_storage()
 
 if "user" not in st.session_state or st.session_state.user is None:
     render_login_portal(show_title=True)

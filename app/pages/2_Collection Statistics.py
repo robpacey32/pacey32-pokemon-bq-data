@@ -4,11 +4,11 @@ import plotly.express as px
 from db_bigquery import get_card_master, get_fx_rate
 from db_mongo import get_user_cards_df
 from styles import apply_umbreon_theme
-from ui_auth import render_login_portal, restore_login_from_cookie
+from ui_auth import render_login_portal, restore_login_from_storage
 
 st.set_page_config(page_title="Collection Statistics", layout="wide")
 apply_umbreon_theme()
-restore_login_from_cookie()
+restore_login_from_storage()
 
 if "user" not in st.session_state or st.session_state.user is None:
     render_login_portal(show_title=True)

@@ -1,5 +1,8 @@
 import os
-from datetime import datetime, timezone
+import hashlib
+import secrets
+from datetime import datetime, timezone, timedelta
+
 from pymongo import MongoClient
 
 MONGO_URI = os.environ["MONGO_URI"]
@@ -10,6 +13,7 @@ db = client[DB_NAME]
 
 users_col = db["users"]
 user_cards_col = db["user_cards"]
+user_sessions_col = db["user_sessions"]
 
 # Ensure indexes (safe to run multiple times)
 users_col.create_index("username", unique=True)
@@ -17,6 +21,59 @@ user_cards_col.create_index([("user_id", 1), ("card_id", 1)], unique=True)
 user_cards_col.create_index([("user_id", 1), ("owned_normal", 1)])
 user_cards_col.create_index([("user_id", 1), ("owned_holo", 1)])
 user_cards_col.create_index([("user_id", 1), ("owned_reverse", 1)])
+
+# Session indexes
+user_sessions_col.create_index("token_hash", unique=True)
+user_sessions_col.create_index("expires_at", expireAfterSeconds=0)
+
+
+def utc_now():
+    return datetime.now(timezone.utc)
+
+
+def hash_session_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_user_session(username: str, days: int = 30) -> str:
+    username = username.strip().lower()
+    token = secrets.token_urlsafe(32)
+    token_hash = hash_session_token(token)
+    now = utc_now()
+    expires_at = now + timedelta(days=days)
+
+    user_sessions_col.insert_one(
+        {
+            "token_hash": token_hash,
+            "username": username,
+            "created_at": now,
+            "expires_at": expires_at,
+        }
+    )
+
+    return token
+
+
+def get_user_session_by_token(token: str):
+    token_hash = hash_session_token(token)
+    return user_sessions_col.find_one({"token_hash": token_hash})
+
+
+def delete_user_session_by_token(token: str):
+    token_hash = hash_session_token(token)
+    user_sessions_col.delete_one({"token_hash": token_hash})
+
+
+def extend_user_session(token: str, days: int = 30):
+    token_hash = hash_session_token(token)
+    user_sessions_col.update_one(
+        {"token_hash": token_hash},
+        {
+            "$set": {
+                "expires_at": utc_now() + timedelta(days=days),
+            }
+        }
+    )
 
 
 def get_user_card_variants(user_id: str) -> dict:
@@ -59,7 +116,7 @@ def upsert_user_card_variants(user_id: str, card_id: str, variant_data: dict):
                 "owned_reverse": bool(variant_data.get("owned_reverse", False)),
                 "owned_first_edition": bool(variant_data.get("owned_first_edition", False)),
                 "owned_w_promo": bool(variant_data.get("owned_w_promo", False)),
-                "updated_at": datetime.now(timezone.utc),
+                "updated_at": utc_now(),
             }
         },
         upsert=True
@@ -85,7 +142,7 @@ def get_user_by_username(username: str):
 def update_last_login(username: str):
     users_col.update_one(
         {"username": username.strip().lower()},
-        {"$set": {"last_login_at": datetime.now(timezone.utc)}}
+        {"$set": {"last_login_at": utc_now()}}
     )
 
 
