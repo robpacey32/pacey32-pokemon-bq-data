@@ -145,9 +145,9 @@ def render_login_portal(show_title: bool = True):
 
     with tab2:
         with st.form("register_form"):
-            username = st.text_input("New username", key="reg_username")
+            username = st.text_input("Choose a username", key="reg_username")
             email = st.text_input("Email", key="reg_email")
-            password = st.text_input("New password", type="password", key="reg_password")
+            password = st.text_input("Choose a password", type="password", key="reg_password")
             register_submitted = st.form_submit_button("Register")
 
         if register_submitted:

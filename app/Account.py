@@ -14,6 +14,15 @@ st.set_page_config(page_title="Account", layout="wide")
 apply_umbreon_theme()
 restore_login_from_storage()
 
+# Show one-time success messages after redirect/rerun
+if "password_reset_success" in st.session_state:
+    st.success(st.session_state.pop("password_reset_success"))
+    st.info("You can now log in with your new password.")
+
+if "email_verify_success" in st.session_state:
+    st.success(st.session_state.pop("email_verify_success"))
+    st.info("You can now log in.")
+
 params = st.query_params
 
 # -------------------------
@@ -26,14 +35,11 @@ if "verify_token" in params:
     st.title("Verify Email")
 
     if ok:
-        st.success(msg)
-        st.info("You can now log in.")
-    else:
-        st.error(msg)
-
-    if st.button("Continue to login"):
+        st.session_state["email_verify_success"] = msg
         st.query_params.clear()
         st.rerun()
+    else:
+        st.error(msg)
 
     st.stop()
 
@@ -59,11 +65,9 @@ if "reset_token" in params:
             ok, msg = reset_password_with_token(token, new_password)
 
             if ok:
-                st.success(msg)
-                st.info("You can now log in.")
-                if st.button("Go to login"):
-                    st.query_params.clear()
-                    st.rerun()
+                st.session_state["password_reset_success"] = msg
+                st.query_params.clear()
+                st.rerun()
             else:
                 st.error(msg)
 
