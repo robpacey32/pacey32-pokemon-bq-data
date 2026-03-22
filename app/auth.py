@@ -12,9 +12,7 @@ from db_mongo import (
     mark_user_email_verified,
 )
 
-# -------------------------
-# PASSWORD HASHING
-# -------------------------
+
 def hash_password(password: str) -> bytes:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
 
@@ -25,9 +23,6 @@ def check_password(password: str, password_hash) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), password_hash)
 
 
-# -------------------------
-# REGISTER
-# -------------------------
 def register_user(username: str, email: str, password: str):
     clean_username = username.strip().lower()
     clean_email = email.strip().lower()
@@ -40,7 +35,7 @@ def register_user(username: str, email: str, password: str):
     })
 
     if existing:
-        return False, "Username or email already exists"
+        return False, "Username or email already exists", None
 
     users_col.insert_one({
         "username": clean_username,
@@ -51,21 +46,19 @@ def register_user(username: str, email: str, password: str):
         "display_currency": "GBP",
         "email_verified": False,
         "email_verified_at": None,
+        "role": "user",
+        "is_active": True,
     })
 
-    # Create email verification token
     token = create_email_verification_token(clean_username, clean_email)
 
     return True, "User created. Please verify your email.", token
 
 
-# -------------------------
-# LOGIN
-# -------------------------
 def login_user(username: str, password: str):
     clean_username = username.strip().lower()
     user = users_col.find_one({"username": clean_username})
-    
+
     if not user:
         return None, "User not found"
 
@@ -76,12 +69,9 @@ def login_user(username: str, password: str):
         return None, "Please verify your email before logging in."
 
     update_last_login(clean_username)
-    return user, None
+    return users_col.find_one({"username": clean_username}), None
 
 
-# -------------------------
-# CHANGE PASSWORD (LOGGED IN)
-# -------------------------
 def change_password(username: str, current_password: str, new_password: str):
     user = users_col.find_one({"username": username.strip().lower()})
     if not user:
@@ -91,25 +81,19 @@ def change_password(username: str, current_password: str, new_password: str):
         return False, "Current password is incorrect"
 
     update_user_password(username, hash_password(new_password))
-
-    # Log out all devices after password change
     delete_all_user_sessions(username)
 
     return True, "Password updated successfully"
 
 
-# -------------------------
-# FORGOT PASSWORD
-# -------------------------
 def request_password_reset(email: str):
     clean_email = email.strip().lower()
     user = get_user_by_email(clean_email)
 
     if not user:
-        return False, "If that email exists, a reset link has been sent."
+        return False, None
 
     token = create_password_reset_token(user["username"])
-
     return True, token
 
 
@@ -122,16 +106,11 @@ def reset_password_with_token(token: str, new_password: str, get_password_reset_
 
     update_user_password(username, hash_password(new_password))
     delete_password_reset_by_token(token)
-
-    # Log out all sessions after password reset
     delete_all_user_sessions(username)
 
     return True, "Password has been reset"
 
 
-# -------------------------
-# EMAIL VERIFICATION
-# -------------------------
 def verify_email_token(token: str, get_email_verification_by_token, delete_email_verification_by_token):
     doc = get_email_verification_by_token(token)
 
