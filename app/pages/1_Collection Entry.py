@@ -262,7 +262,7 @@ with st.sidebar:
     set_options = ["All"] + get_set_list(selected_series)
     selected_set = st.selectbox("Set", set_options)
 
-    card_name_search = st.text_input("Card name contains")
+    card_name_search = st.text_input("Search cards")
     row_limit = st.selectbox("Rows per page", [25, 50, 100, 250, 500], index=1)
 
     filter_key = f"{selected_series}_{selected_set}_{card_name_search}_{row_limit}"

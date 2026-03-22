@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import pandas as pd
 import streamlit as st
 from google.cloud import bigquery
@@ -72,6 +73,82 @@ def get_set_list(series_name: str | None = None) -> list:
     return df["set_name"].dropna().tolist()
 
 
+def parse_smart_search(search_text: str) -> dict:
+    if not search_text:
+        return {
+            "exact_card_id": None,
+            "set_text": None,
+            "local_id": None,
+            "name_text": None,
+        }
+
+    s = search_text.strip().lower()
+
+    # exact card id like base1-1
+    if re.fullmatch(r"[a-z0-9]+-\d+[a-z]?", s):
+        return {
+            "exact_card_id": s,
+            "set_text": None,
+            "local_id": None,
+            "name_text": None,
+        }
+
+    # set + number like "base 1", "jungle 5", "neo discovery 12"
+    m = re.fullmatch(r"(.+?)\s+(\d+[a-z]?)", s)
+    if m:
+        return {
+            "exact_card_id": None,
+            "set_text": m.group(1).strip(),
+            "local_id": m.group(2).strip(),
+            "name_text": None,
+        }
+
+    # number only like "123" or "12a"
+    if re.fullmatch(r"\d+[a-z]?", s):
+        return {
+            "exact_card_id": None,
+            "set_text": None,
+            "local_id": s,
+            "name_text": None,
+        }
+
+    # fallback = name search
+    return {
+        "exact_card_id": None,
+        "set_text": None,
+        "local_id": None,
+        "name_text": s,
+    }
+
+
+def _build_set_name_filter(set_text: str) -> str:
+    safe_set_text = set_text.strip().lower()
+
+    set_aliases = {
+        "base": ["base", "base set"],
+        "base set": ["base", "base set"],
+        "jungle": ["jungle"],
+        "fossil": ["fossil"],
+        "rocket": ["rocket", "team rocket"],
+        "team rocket": ["rocket", "team rocket"],
+        "gym heroes": ["gym heroes"],
+        "gym challenge": ["gym challenge"],
+        "neo genesis": ["neo genesis"],
+        "neo discovery": ["neo discovery"],
+        "neo revelation": ["neo revelation"],
+        "neo destiny": ["neo destiny"],
+    }
+
+    aliases = set_aliases.get(safe_set_text, [safe_set_text])
+
+    alias_filters = []
+    for alias in aliases:
+        safe_alias = alias.replace("'", "\\'")
+        alias_filters.append(f"LOWER(set_name) LIKE LOWER('%{safe_alias}%')")
+
+    return "(" + " OR ".join(alias_filters) + ")"
+
+
 def _select_display_currency_columns(df: pd.DataFrame) -> pd.DataFrame:
     display_currency = st.session_state.get("display_currency", "GBP").lower()
 
@@ -110,8 +187,24 @@ def get_card_master(
         safe_set = set_name.replace("'", "\\'")
         filters.append(f"set_name = '{safe_set}'")
 
-    if card_name_search:
-        safe_name = card_name_search.replace("'", "\\'")
+    parsed = parse_smart_search(card_name_search or "")
+
+    if parsed["exact_card_id"]:
+        safe_card_id = parsed["exact_card_id"].replace("'", "\\'")
+        filters.append(f"LOWER(card_id) = LOWER('{safe_card_id}')")
+
+    elif parsed["set_text"] and parsed["local_id"]:
+        set_filter = _build_set_name_filter(parsed["set_text"])
+        safe_local_id = parsed["local_id"].replace("'", "\\'")
+        filters.append(set_filter)
+        filters.append(f"LOWER(local_id) = LOWER('{safe_local_id}')")
+
+    elif parsed["local_id"]:
+        safe_local_id = parsed["local_id"].replace("'", "\\'")
+        filters.append(f"LOWER(local_id) = LOWER('{safe_local_id}')")
+
+    elif parsed["name_text"]:
+        safe_name = parsed["name_text"].replace("'", "\\'")
         filters.append(f"LOWER(name) LIKE LOWER('%{safe_name}%')")
 
     where_clause = ""
