@@ -6,14 +6,7 @@ from auth import (
     verify_email_token,
     reset_password_with_token,
 )
-from db_mongo import (
-    get_user_by_username,
-    update_user_display_currency,
-    get_email_verification_by_token,
-    delete_email_verification_by_token,
-    get_password_reset_by_token,
-    delete_password_reset_by_token,
-)
+from db_mongo import get_user_by_username, update_user_display_currency
 from styles import apply_umbreon_theme
 from ui_auth import render_login_portal, restore_login_from_storage, logout
 
@@ -28,14 +21,13 @@ params = st.query_params
 # -------------------------
 if "verify_token" in params:
     token = params["verify_token"]
-    ok, msg = verify_email_token(
-        token,
-        get_email_verification_by_token,
-        delete_email_verification_by_token,
-    )
+    ok, msg = verify_email_token(token)
+
+    st.title("Verify Email")
 
     if ok:
         st.success(msg)
+        st.info("You can now log in.")
     else:
         st.error(msg)
 
@@ -51,7 +43,7 @@ if "verify_token" in params:
 if "reset_token" in params:
     token = params["reset_token"]
 
-    st.title("Reset password")
+    st.title("Reset Password")
 
     with st.form("reset_password_form"):
         new_password = st.text_input("New password", type="password")
@@ -64,15 +56,11 @@ if "reset_token" in params:
         elif len(new_password) < 6:
             st.error("Password must be at least 6 characters")
         else:
-            ok, msg = reset_password_with_token(
-                token,
-                new_password,
-                get_password_reset_by_token,
-                delete_password_reset_by_token,
-            )
+            ok, msg = reset_password_with_token(token, new_password)
 
             if ok:
                 st.success(msg)
+                st.info("You can now log in.")
                 if st.button("Go to login"):
                     st.query_params.clear()
                     st.rerun()
@@ -102,9 +90,10 @@ def format_dt(value):
     except Exception:
         return str(value)
 
+
 user = get_user_by_username(st.session_state.user["username"])
 
-    # Safety fallback
+# Safety fallback
 if not user:
     st.session_state.user = None
     st.warning("Your session could not be loaded. Please log in again.")

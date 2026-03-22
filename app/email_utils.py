@@ -12,7 +12,7 @@ resend.api_key = RESEND_API_KEY
 
 
 def send_verification_email(email: str, token: str):
-    verify_url = f"{APP_BASE_URL}/Account?verify_token={token}"
+    verify_url = f"{APP_BASE_URL}?verify_token={token}"
 
     html = f"""
     <html>
@@ -35,7 +35,7 @@ def send_verification_email(email: str, token: str):
 
 
 def send_password_reset_email(email: str, token: str):
-    reset_url = f"{APP_BASE_URL}/Account?reset_token={token}"
+    reset_url = f"{APP_BASE_URL}?reset_token={token}"
 
     html = f"""
     <html>

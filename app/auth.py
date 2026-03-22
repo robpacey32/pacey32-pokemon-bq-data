@@ -10,6 +10,10 @@ from db_mongo import (
     create_password_reset_token,
     get_user_by_email,
     mark_user_email_verified,
+    get_email_verification_by_token,
+    delete_email_verification_by_token,
+    get_password_reset_by_token,
+    delete_password_reset_by_token,
 )
 
 
@@ -65,6 +69,9 @@ def login_user(username: str, password: str):
     if not check_password(password, user["password_hash"]):
         return None, "Incorrect password"
 
+    if not user.get("is_active", True):
+        return None, "This account is inactive."
+
     if not user.get("email_verified", False):
         return None, "Please verify your email before logging in."
 
@@ -93,11 +100,14 @@ def request_password_reset(email: str):
     if not user:
         return False, None
 
+    if not user.get("is_active", True):
+        return False, None
+
     token = create_password_reset_token(user["username"])
     return True, token
 
 
-def reset_password_with_token(token: str, new_password: str, get_password_reset_by_token, delete_password_reset_by_token):
+def reset_password_with_token(token: str, new_password: str):
     reset_doc = get_password_reset_by_token(token)
     if not reset_doc:
         return False, "Invalid or expired reset link"
@@ -111,7 +121,7 @@ def reset_password_with_token(token: str, new_password: str, get_password_reset_
     return True, "Password has been reset"
 
 
-def verify_email_token(token: str, get_email_verification_by_token, delete_email_verification_by_token):
+def verify_email_token(token: str):
     doc = get_email_verification_by_token(token)
 
     if not doc:

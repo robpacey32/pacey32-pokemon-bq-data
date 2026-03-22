@@ -149,6 +149,32 @@ def delete_email_verifications_for_user(username: str):
     email_verifications_col.delete_many({"username": username.strip().lower()})
 
 
+def create_email_verification(username: str, email: str, hours: int = 24) -> str:
+    return create_email_verification_token(username, email, hours=hours)
+
+
+def verify_email_token(token: str):
+    token_hash = hash_token(token)
+    record = email_verifications_col.find_one({"token_hash": token_hash})
+
+    if not record:
+        return False, "Invalid or expired token"
+
+    users_col.update_one(
+        {"username": record["username"]},
+        {
+            "$set": {
+                "email_verified": True,
+                "email_verified_at": utc_now(),
+            }
+        }
+    )
+
+    email_verifications_col.delete_one({"token_hash": token_hash})
+
+    return True, "Email verified successfully"
+
+
 # -------------------------
 # PASSWORD RESETS
 # -------------------------
@@ -183,6 +209,44 @@ def delete_password_reset_by_token(token: str):
 
 def delete_password_resets_for_user(username: str):
     password_resets_col.delete_many({"username": username.strip().lower()})
+
+
+def create_password_reset(email: str, hours: int = 2):
+    user = users_col.find_one({"email": email.strip().lower()})
+    if not user:
+        return False, None
+
+    token = secrets.token_urlsafe(32)
+    token_hash = hash_token(token)
+
+    password_resets_col.insert_one(
+        {
+            "token_hash": token_hash,
+            "username": user["username"],
+            "created_at": utc_now(),
+            "expires_at": utc_now() + timedelta(hours=hours),
+        }
+    )
+
+    return True, token
+
+
+def reset_password_with_token(token: str, new_password_hash: bytes):
+    token_hash = hash_token(token)
+    record = password_resets_col.find_one({"token_hash": token_hash})
+
+    if not record:
+        return False, "Invalid or expired token"
+
+    users_col.update_one(
+        {"username": record["username"]},
+        {"$set": {"password_hash": new_password_hash}}
+    )
+
+    password_resets_col.delete_one({"token_hash": token_hash})
+    user_sessions_col.delete_many({"username": record["username"]})
+
+    return True, "Password reset successfully"
 
 
 # -------------------------
