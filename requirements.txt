@@ -14,3 +14,4 @@ streamlit-cookies-manager
 streamlit-local-storage
 python-dotenv
 dnspython
+resend

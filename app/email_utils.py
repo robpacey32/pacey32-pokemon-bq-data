@@ -1,35 +1,14 @@
 import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-
+import resend
 
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:8501")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "info@pacey32.com")
 
-SMTP_HOST = os.environ.get("SMTP_HOST")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER = os.environ.get("SMTP_USER")
-SMTP_PASS = os.environ.get("SMTP_PASS")
-SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER)
+if not RESEND_API_KEY:
+    raise ValueError("RESEND_API_KEY is missing")
 
-
-def send_email(to_email: str, subject: str, html_body: str):
-    if not SMTP_HOST or not SMTP_USER or not SMTP_PASS:
-        raise ValueError("SMTP email settings are missing")
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = SMTP_FROM
-    msg["To"] = to_email
-
-    text_body = "Please view this email in HTML format."
-    msg.attach(MIMEText(text_body, "plain"))
-    msg.attach(MIMEText(html_body, "html"))
-
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASS)
-        server.sendmail(SMTP_FROM, to_email, msg.as_string())
+resend.api_key = RESEND_API_KEY
 
 
 def send_verification_email(email: str, token: str):
@@ -47,7 +26,12 @@ def send_verification_email(email: str, token: str):
     </html>
     """
 
-    send_email(email, "Verify your account", html)
+    resend.Emails.send({
+        "from": EMAIL_FROM,
+        "to": [email],
+        "subject": "Verify your account",
+        "html": html,
+    })
 
 
 def send_password_reset_email(email: str, token: str):
@@ -65,4 +49,9 @@ def send_password_reset_email(email: str, token: str):
     </html>
     """
 
-    send_email(email, "Reset your password", html)
+    resend.Emails.send({
+        "from": EMAIL_FROM,
+        "to": [email],
+        "subject": "Reset your password",
+        "html": html,
+    })
