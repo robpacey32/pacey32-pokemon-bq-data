@@ -3,7 +3,7 @@ name: 2. Card Price History
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 6 * * *"   # daily at 06:00 UTC
+    - cron: "0 6 * * 0"   # weekly on Sunday at 06:00 UTC
 
 jobs:
   load-card-prices:
