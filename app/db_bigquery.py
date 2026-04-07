@@ -222,14 +222,11 @@ def get_card_master(
 
     if parsed["exact_card_id"]:
         filters.append(f"LOWER(card_id) = LOWER('{_escape_sql(parsed['exact_card_id'])}')")
-
     elif parsed["set_text"] and parsed["local_id"]:
         filters.append(_build_set_name_filter(parsed["set_text"]))
         filters.append(f"LOWER(local_id) = LOWER('{_escape_sql(parsed['local_id'])}')")
-
     elif parsed["local_id"]:
         filters.append(f"LOWER(local_id) = LOWER('{_escape_sql(parsed['local_id'])}')")
-
     elif parsed["name_text"]:
         filters.append(f"LOWER(name) LIKE LOWER('%{_escape_sql(parsed['name_text'])}%')")
 
@@ -364,6 +361,53 @@ def get_card_price_history(card_id: str) -> pd.DataFrame:
     usd_to_eur = get_fx_rate("USD", "EUR")
 
     sql = f"""
+    WITH base AS (
+      SELECT
+          snapshot_timestamp,
+
+          cardmarket_avg,
+          cardmarket_low,
+          cardmarket_trend,
+          cardmarket_avg_holo,
+          cardmarket_low_holo,
+          cardmarket_trend_holo,
+          tcgplayer_normal_market_price,
+          tcgplayer_holofoil_market_price,
+          tcgplayer_reverse_holofoil_market_price,
+
+          COALESCE(
+              tcgplayer_normal_market_price,
+              cardmarket_avg
+          ) AS display_normal_price,
+
+          CASE
+              WHEN tcgplayer_normal_market_price IS NOT NULL THEN 'TCGPlayer Normal'
+              WHEN cardmarket_avg IS NOT NULL THEN 'Cardmarket Normal'
+              ELSE NULL
+          END AS display_normal_source,
+
+          COALESCE(
+              tcgplayer_holofoil_market_price,
+              cardmarket_avg_holo
+          ) AS display_holofoil_price,
+
+          CASE
+              WHEN tcgplayer_holofoil_market_price IS NOT NULL THEN 'TCGPlayer Holofoil'
+              WHEN cardmarket_avg_holo IS NOT NULL THEN 'Cardmarket Holofoil'
+              ELSE NULL
+          END AS display_holofoil_source,
+
+          tcgplayer_reverse_holofoil_market_price AS display_reverse_holofoil_price,
+
+          CASE
+              WHEN tcgplayer_reverse_holofoil_market_price IS NOT NULL THEN 'TCGPlayer Reverse Holofoil'
+              ELSE NULL
+          END AS display_reverse_holofoil_source
+
+      FROM `pokemon-pacey32-github.pokemonApp.card_price_history`
+      WHERE card_id = '{safe_card_id}'
+    )
+
     SELECT
         snapshot_timestamp,
 
@@ -377,6 +421,13 @@ def get_card_price_history(card_id: str) -> pd.DataFrame:
         tcgplayer_holofoil_market_price,
         tcgplayer_reverse_holofoil_market_price,
 
+        display_normal_price,
+        display_normal_source,
+        display_holofoil_price,
+        display_holofoil_source,
+        display_reverse_holofoil_price,
+        display_reverse_holofoil_source,
+
         cardmarket_avg AS cardmarket_avg_display_eur,
         cardmarket_low AS cardmarket_low_display_eur,
         cardmarket_trend AS cardmarket_trend_display_eur,
@@ -386,6 +437,23 @@ def get_card_price_history(card_id: str) -> pd.DataFrame:
         tcgplayer_normal_market_price * {usd_to_eur} AS tcgplayer_normal_market_price_display_eur,
         tcgplayer_holofoil_market_price * {usd_to_eur} AS tcgplayer_holofoil_market_price_display_eur,
         tcgplayer_reverse_holofoil_market_price * {usd_to_eur} AS tcgplayer_reverse_holofoil_market_price_display_eur,
+
+        CASE
+            WHEN display_normal_source LIKE 'Cardmarket%' THEN display_normal_price
+            WHEN display_normal_source LIKE 'TCGPlayer%' THEN display_normal_price * {usd_to_eur}
+            ELSE display_normal_price
+        END AS display_normal_price_display_eur,
+
+        CASE
+            WHEN display_holofoil_source LIKE 'Cardmarket%' THEN display_holofoil_price
+            WHEN display_holofoil_source LIKE 'TCGPlayer%' THEN display_holofoil_price * {usd_to_eur}
+            ELSE display_holofoil_price
+        END AS display_holofoil_price_display_eur,
+
+        CASE
+            WHEN display_reverse_holofoil_source LIKE 'TCGPlayer%' THEN display_reverse_holofoil_price * {usd_to_eur}
+            ELSE display_reverse_holofoil_price
+        END AS display_reverse_holofoil_price_display_eur,
 
         cardmarket_avg * {eur_to_gbp} AS cardmarket_avg_display_gbp,
         cardmarket_low * {eur_to_gbp} AS cardmarket_low_display_gbp,
@@ -397,6 +465,23 @@ def get_card_price_history(card_id: str) -> pd.DataFrame:
         tcgplayer_holofoil_market_price * {usd_to_gbp} AS tcgplayer_holofoil_market_price_display_gbp,
         tcgplayer_reverse_holofoil_market_price * {usd_to_gbp} AS tcgplayer_reverse_holofoil_market_price_display_gbp,
 
+        CASE
+            WHEN display_normal_source LIKE 'Cardmarket%' THEN display_normal_price * {eur_to_gbp}
+            WHEN display_normal_source LIKE 'TCGPlayer%' THEN display_normal_price * {usd_to_gbp}
+            ELSE display_normal_price
+        END AS display_normal_price_display_gbp,
+
+        CASE
+            WHEN display_holofoil_source LIKE 'Cardmarket%' THEN display_holofoil_price * {eur_to_gbp}
+            WHEN display_holofoil_source LIKE 'TCGPlayer%' THEN display_holofoil_price * {usd_to_gbp}
+            ELSE display_holofoil_price
+        END AS display_holofoil_price_display_gbp,
+
+        CASE
+            WHEN display_reverse_holofoil_source LIKE 'TCGPlayer%' THEN display_reverse_holofoil_price * {usd_to_gbp}
+            ELSE display_reverse_holofoil_price
+        END AS display_reverse_holofoil_price_display_gbp,
+
         cardmarket_avg * {eur_to_usd} AS cardmarket_avg_display_usd,
         cardmarket_low * {eur_to_usd} AS cardmarket_low_display_usd,
         cardmarket_trend * {eur_to_usd} AS cardmarket_trend_display_usd,
@@ -405,10 +490,26 @@ def get_card_price_history(card_id: str) -> pd.DataFrame:
         cardmarket_trend_holo * {eur_to_usd} AS cardmarket_trend_holo_display_usd,
         tcgplayer_normal_market_price AS tcgplayer_normal_market_price_display_usd,
         tcgplayer_holofoil_market_price AS tcgplayer_holofoil_market_price_display_usd,
-        tcgplayer_reverse_holofoil_market_price AS tcgplayer_reverse_holofoil_market_price_display_usd
+        tcgplayer_reverse_holofoil_market_price AS tcgplayer_reverse_holofoil_market_price_display_usd,
 
-    FROM `pokemon-pacey32-github.pokemonApp.card_price_history`
-    WHERE card_id = '{safe_card_id}'
+        CASE
+            WHEN display_normal_source LIKE 'Cardmarket%' THEN display_normal_price * {eur_to_usd}
+            WHEN display_normal_source LIKE 'TCGPlayer%' THEN display_normal_price
+            ELSE display_normal_price
+        END AS display_normal_price_display_usd,
+
+        CASE
+            WHEN display_holofoil_source LIKE 'Cardmarket%' THEN display_holofoil_price * {eur_to_usd}
+            WHEN display_holofoil_source LIKE 'TCGPlayer%' THEN display_holofoil_price
+            ELSE display_holofoil_price
+        END AS display_holofoil_price_display_usd,
+
+        CASE
+            WHEN display_reverse_holofoil_source LIKE 'TCGPlayer%' THEN display_reverse_holofoil_price
+            ELSE display_reverse_holofoil_price
+        END AS display_reverse_holofoil_price_display_usd
+
+    FROM base
     ORDER BY snapshot_timestamp
     """
     df = run_query(sql)
@@ -573,6 +674,131 @@ def get_card_latest_variant_prices(card_id: str) -> pd.DataFrame:
     FROM `pokemon-pacey32-github.pokemondatafromapi.card_latest_price_vw`
     WHERE card_id = '{safe_card_id}'
     LIMIT 1
+    """
+    df = run_query(sql)
+    if df.empty:
+        return df
+    return _select_display_currency_columns(df)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_card_latest_variant_prices_bulk(card_ids: list[str]) -> pd.DataFrame:
+    if not card_ids:
+        return pd.DataFrame()
+
+    safe_ids = [f"'{_escape_sql(card_id)}'" for card_id in card_ids]
+    ids_sql = ", ".join(safe_ids)
+
+    eur_to_gbp = get_fx_rate("EUR", "GBP")
+    eur_to_usd = get_fx_rate("EUR", "USD")
+    usd_to_gbp = get_fx_rate("USD", "GBP")
+    usd_to_eur = get_fx_rate("USD", "EUR")
+
+    display_normal_eur = _display_price_case_sql(
+        "display_normal_price",
+        "display_normal_source",
+        "EUR",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+    display_normal_gbp = _display_price_case_sql(
+        "display_normal_price",
+        "display_normal_source",
+        "GBP",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+    display_normal_usd = _display_price_case_sql(
+        "display_normal_price",
+        "display_normal_source",
+        "USD",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+
+    display_holo_eur = _display_price_case_sql(
+        "display_holofoil_price",
+        "display_holofoil_source",
+        "EUR",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+    display_holo_gbp = _display_price_case_sql(
+        "display_holofoil_price",
+        "display_holofoil_source",
+        "GBP",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+    display_holo_usd = _display_price_case_sql(
+        "display_holofoil_price",
+        "display_holofoil_source",
+        "USD",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+
+    display_reverse_eur = _display_price_case_sql(
+        "display_reverse_holofoil_price",
+        "display_reverse_holofoil_source",
+        "EUR",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+    display_reverse_gbp = _display_price_case_sql(
+        "display_reverse_holofoil_price",
+        "display_reverse_holofoil_source",
+        "GBP",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+    display_reverse_usd = _display_price_case_sql(
+        "display_reverse_holofoil_price",
+        "display_reverse_holofoil_source",
+        "USD",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+
+    sql = f"""
+    SELECT
+        card_id,
+        snapshot_timestamp,
+        display_normal_price,
+        display_normal_source,
+        display_holofoil_price,
+        display_holofoil_source,
+        display_reverse_holofoil_price,
+        display_reverse_holofoil_source,
+        {display_normal_eur} AS display_normal_price_display_eur,
+        {display_holo_eur} AS display_holofoil_price_display_eur,
+        {display_reverse_eur} AS display_reverse_holofoil_price_display_eur,
+        {display_normal_gbp} AS display_normal_price_display_gbp,
+        {display_holo_gbp} AS display_holofoil_price_display_gbp,
+        {display_reverse_gbp} AS display_reverse_holofoil_price_display_gbp,
+        {display_normal_usd} AS display_normal_price_display_usd,
+        {display_holo_usd} AS display_holofoil_price_display_usd,
+        {display_reverse_usd} AS display_reverse_holofoil_price_display_usd
+    FROM `pokemon-pacey32-github.pokemondatafromapi.card_latest_price_vw`
+    WHERE card_id IN ({ids_sql})
     """
     df = run_query(sql)
     if df.empty:

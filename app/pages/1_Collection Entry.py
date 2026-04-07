@@ -10,6 +10,7 @@ from db_bigquery import (
     get_card_detail_by_id,
     get_card_price_history,
     get_card_latest_variant_prices,
+    get_card_latest_variant_prices_bulk,
 )
 from db_mongo import get_user_card_variants, upsert_user_card_variants
 from styles import apply_umbreon_theme
@@ -200,9 +201,9 @@ def render_card_detail_content(card_id, display_currency, symbol):
         st.info("No historic pricing available yet.")
     else:
         chart_cols = [
-            "tcgplayer_normal_market_price_display",
-            "tcgplayer_holofoil_market_price_display",
-            "tcgplayer_reverse_holofoil_market_price_display",
+            "display_normal_price_display",
+            "display_holofoil_price_display",
+            "display_reverse_holofoil_price_display",
         ]
 
         chart_long = history_df.melt(
@@ -216,9 +217,9 @@ def render_card_detail_content(card_id, display_currency, symbol):
             st.info("No chartable price history available.")
         else:
             label_map = {
-                "tcgplayer_normal_market_price_display": "TCGPlayer Normal",
-                "tcgplayer_holofoil_market_price_display": "TCGPlayer Holofoil",
-                "tcgplayer_reverse_holofoil_market_price_display": "TCGPlayer Reverse Holofoil",
+                "display_normal_price_display": "Normal",
+                "display_holofoil_price_display": "Holofoil",
+                "display_reverse_holofoil_price_display": "Reverse Holofoil",
             }
             chart_long["price_type"] = chart_long["price_type"].map(label_map)
             chart_long["snapshot_date"] = pd.to_datetime(
@@ -292,30 +293,25 @@ df = get_card_master(
     display_currency=display_currency,
 )
 
-latest_variant_frames = []
 if not df.empty:
-    for card_id in df["card_id"].tolist():
-        latest_df = get_card_latest_variant_prices(card_id)
-        if not latest_df.empty:
-            latest_variant_frames.append(latest_df)
+    latest_variant_all_df = get_card_latest_variant_prices_bulk(df["card_id"].tolist())
 
-if latest_variant_frames:
-    latest_variant_all_df = pd.concat(latest_variant_frames, ignore_index=True)
-    df = df.merge(
-        latest_variant_all_df[
-            [
-                "card_id",
-                "display_normal_price_display",
-                "display_normal_source",
-                "display_holofoil_price_display",
-                "display_holofoil_source",
-                "display_reverse_holofoil_price_display",
-                "display_reverse_holofoil_source",
-            ]
-        ],
-        on="card_id",
-        how="left",
-    )
+    if not latest_variant_all_df.empty:
+        df = df.merge(
+            latest_variant_all_df[
+                [
+                    "card_id",
+                    "display_normal_price_display",
+                    "display_normal_source",
+                    "display_holofoil_price_display",
+                    "display_holofoil_source",
+                    "display_reverse_holofoil_price_display",
+                    "display_reverse_holofoil_source",
+                ]
+            ],
+            on="card_id",
+            how="left",
+        )
 
 user_variant_map = get_user_card_variants(user_id)
 
@@ -362,7 +358,7 @@ for _, row in df.iterrows():
     max_tcgplayer_price = get_card_max_tcgplayer_price(row)
 
     if owned_value > 0:
-        value_text = f"Owned Value: {symbol}{owned_value:,.2f}"
+        value_text = f"Price: {symbol}{owned_value:,.2f}"
     elif max_tcgplayer_price is not None:
         value_text = f"Price: {symbol}{max_tcgplayer_price:,.2f}"
     else:
