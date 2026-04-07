@@ -59,26 +59,26 @@ def get_card_owned_value(row, owned_map):
     total = 0.0
 
     if owned_map.get("owned_normal", False):
-        normal_val = row.get("tcgplayer_normal_market_price_display")
+        normal_val = row.get("display_normal_price_display")
         if pd.notnull(normal_val):
             total += float(normal_val)
 
     if owned_map.get("owned_holo", False):
-        holo_val = row.get("tcgplayer_holofoil_market_price_display")
+        holo_val = row.get("display_holofoil_price_display")
         if pd.notnull(holo_val):
             total += float(holo_val)
 
     if owned_map.get("owned_reverse", False):
-        reverse_val = row.get("tcgplayer_reverse_holofoil_market_price_display")
+        reverse_val = row.get("display_reverse_holofoil_price_display")
         if pd.notnull(reverse_val):
             total += float(reverse_val)
 
     if owned_map.get("owned_first_edition", False):
         fallback_vals = []
         for col in [
-            "tcgplayer_normal_market_price_display",
-            "tcgplayer_holofoil_market_price_display",
-            "tcgplayer_reverse_holofoil_market_price_display",
+            "display_normal_price_display",
+            "display_holofoil_price_display",
+            "display_reverse_holofoil_price_display",
         ]:
             val = row.get(col)
             if pd.notnull(val):
@@ -89,9 +89,9 @@ def get_card_owned_value(row, owned_map):
     if owned_map.get("owned_w_promo", False):
         fallback_vals = []
         for col in [
-            "tcgplayer_normal_market_price_display",
-            "tcgplayer_holofoil_market_price_display",
-            "tcgplayer_reverse_holofoil_market_price_display",
+            "display_normal_price_display",
+            "display_holofoil_price_display",
+            "display_reverse_holofoil_price_display",
         ]:
             val = row.get(col)
             if pd.notnull(val):
@@ -106,17 +106,17 @@ def get_card_max_tcgplayer_price(row):
     candidates = []
 
     if row.get("variant_normal"):
-        val = row.get("tcgplayer_normal_market_price_display")
+        val = row.get("display_normal_price_display")
         if pd.notnull(val):
             candidates.append(float(val))
 
     if row.get("variant_holo"):
-        val = row.get("tcgplayer_holofoil_market_price_display")
+        val = row.get("display_holofoil_price_display")
         if pd.notnull(val):
             candidates.append(float(val))
 
     if row.get("variant_reverse"):
-        val = row.get("tcgplayer_reverse_holofoil_market_price_display")
+        val = row.get("display_reverse_holofoil_price_display")
         if pd.notnull(val):
             candidates.append(float(val))
 
@@ -166,31 +166,33 @@ def render_card_detail_content(card_id, display_currency, symbol):
         st.info("No variant pricing found.")
     else:
         v = latest_variant_df.iloc[0]
-
         variant_rows = []
 
         if row.get("variant_normal"):
             variant_rows.append([
-                "TCGPlayer Normal",
-                format_money(v.get("tcgplayer_normal_market_price_display"), symbol)
+                "Normal",
+                format_money(v.get("display_normal_price_display"), symbol),
+                v.get("display_normal_source") or "N/A",
             ])
 
         if row.get("variant_holo"):
             variant_rows.append([
-                "TCGPlayer Holofoil",
-                format_money(v.get("tcgplayer_holofoil_market_price_display"), symbol)
+                "Holofoil",
+                format_money(v.get("display_holofoil_price_display"), symbol),
+                v.get("display_holofoil_source") or "N/A",
             ])
 
         if row.get("variant_reverse"):
             variant_rows.append([
-                "TCGPlayer Reverse Holofoil",
-                format_money(v.get("tcgplayer_reverse_holofoil_market_price_display"), symbol)
+                "Reverse Holofoil",
+                format_money(v.get("display_reverse_holofoil_price_display"), symbol),
+                v.get("display_reverse_holofoil_source") or "N/A",
             ])
 
         if not variant_rows:
-            variant_rows = [["TCGPlayer", "N/A"]]
+            variant_rows = [["Price", "N/A", "N/A"]]
 
-        variant_df = pd.DataFrame(variant_rows, columns=["Variant", "Value"])
+        variant_df = pd.DataFrame(variant_rows, columns=["Variant", "Value", "Source"])
         st.dataframe(variant_df, use_container_width=True, hide_index=True)
 
     st.markdown("### Historic Pricing")
@@ -290,6 +292,31 @@ df = get_card_master(
     display_currency=display_currency,
 )
 
+latest_variant_frames = []
+if not df.empty:
+    for card_id in df["card_id"].tolist():
+        latest_df = get_card_latest_variant_prices(card_id)
+        if not latest_df.empty:
+            latest_variant_frames.append(latest_df)
+
+if latest_variant_frames:
+    latest_variant_all_df = pd.concat(latest_variant_frames, ignore_index=True)
+    df = df.merge(
+        latest_variant_all_df[
+            [
+                "card_id",
+                "display_normal_price_display",
+                "display_normal_source",
+                "display_holofoil_price_display",
+                "display_holofoil_source",
+                "display_reverse_holofoil_price_display",
+                "display_reverse_holofoil_source",
+            ]
+        ],
+        on="card_id",
+        how="left",
+    )
+
 user_variant_map = get_user_card_variants(user_id)
 
 start_row = offset + 1 if len(df) > 0 else 0
@@ -337,9 +364,9 @@ for _, row in df.iterrows():
     if owned_value > 0:
         value_text = f"Owned Value: {symbol}{owned_value:,.2f}"
     elif max_tcgplayer_price is not None:
-        value_text = f"TCGPlayer Price: {symbol}{max_tcgplayer_price:,.2f}"
+        value_text = f"Price: {symbol}{max_tcgplayer_price:,.2f}"
     else:
-        value_text = "TCGPlayer Price: N/A"
+        value_text = "Price: N/A"
 
     if is_selected:
         st.markdown(

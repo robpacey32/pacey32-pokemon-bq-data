@@ -21,6 +21,10 @@ def run_query(sql: str) -> pd.DataFrame:
     return client.query(sql).to_dataframe()
 
 
+def _escape_sql(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_fx_rate(base_currency: str, target_currency: str) -> float:
     if base_currency == target_currency:
@@ -29,8 +33,8 @@ def get_fx_rate(base_currency: str, target_currency: str) -> float:
     sql = f"""
     SELECT exchange_rate
     FROM `pokemon-pacey32-github.pokemonApp.currency_rates_latest_vw`
-    WHERE base_currency = '{base_currency}'
-      AND target_currency = '{target_currency}'
+    WHERE base_currency = '{_escape_sql(base_currency)}'
+      AND target_currency = '{_escape_sql(target_currency)}'
     LIMIT 1
     """
     df = run_query(sql)
@@ -57,8 +61,7 @@ def get_set_list(series_name: str | None = None) -> list:
     filters = ["set_name IS NOT NULL"]
 
     if series_name and series_name != "All":
-        safe_series = series_name.replace("'", "\\'")
-        filters.append(f"series_name = '{safe_series}'")
+        filters.append(f"series_name = '{_escape_sql(series_name)}'")
 
     where_clause = "WHERE " + " AND ".join(filters)
 
@@ -84,7 +87,6 @@ def parse_smart_search(search_text: str) -> dict:
 
     s = search_text.strip().lower()
 
-    # exact card id like base1-1
     if re.fullmatch(r"[a-z0-9]+-\d+[a-z]?", s):
         return {
             "exact_card_id": s,
@@ -93,7 +95,6 @@ def parse_smart_search(search_text: str) -> dict:
             "name_text": None,
         }
 
-    # set + number like "base 1", "jungle 5", "neo discovery 12"
     m = re.fullmatch(r"(.+?)\s+(\d+[a-z]?)", s)
     if m:
         return {
@@ -103,7 +104,6 @@ def parse_smart_search(search_text: str) -> dict:
             "name_text": None,
         }
 
-    # number only like "123" or "12a"
     if re.fullmatch(r"\d+[a-z]?", s):
         return {
             "exact_card_id": None,
@@ -112,7 +112,6 @@ def parse_smart_search(search_text: str) -> dict:
             "name_text": None,
         }
 
-    # fallback = name search
     return {
         "exact_card_id": None,
         "set_text": None,
@@ -143,8 +142,9 @@ def _build_set_name_filter(set_text: str) -> str:
 
     alias_filters = []
     for alias in aliases:
-        safe_alias = alias.replace("'", "\\'")
-        alias_filters.append(f"LOWER(set_name) LIKE LOWER('%{safe_alias}%')")
+        alias_filters.append(
+            f"LOWER(set_name) LIKE LOWER('%{_escape_sql(alias)}%')"
+        )
 
     return "(" + " OR ".join(alias_filters) + ")"
 
@@ -162,10 +162,43 @@ def _select_display_currency_columns(df: pd.DataFrame) -> pd.DataFrame:
         f"tcgplayer_normal_market_price_display_{display_currency}": "tcgplayer_normal_market_price_display",
         f"tcgplayer_holofoil_market_price_display_{display_currency}": "tcgplayer_holofoil_market_price_display",
         f"tcgplayer_reverse_holofoil_market_price_display_{display_currency}": "tcgplayer_reverse_holofoil_market_price_display",
+        f"display_normal_price_display_{display_currency}": "display_normal_price_display",
+        f"display_holofoil_price_display_{display_currency}": "display_holofoil_price_display",
+        f"display_reverse_holofoil_price_display_{display_currency}": "display_reverse_holofoil_price_display",
     }
 
     existing = {k: v for k, v in rename_map.items() if k in df.columns}
     return df.rename(columns=existing)
+
+
+def _display_price_case_sql(
+    raw_col: str,
+    source_col: str,
+    target_currency: str,
+    eur_to_gbp: float,
+    eur_to_usd: float,
+    usd_to_gbp: float,
+    usd_to_eur: float,
+) -> str:
+    if target_currency == "EUR":
+        cardmarket_expr = raw_col
+        tcgplayer_expr = f"{raw_col} * {usd_to_eur}"
+    elif target_currency == "USD":
+        cardmarket_expr = f"{raw_col} * {eur_to_usd}"
+        tcgplayer_expr = raw_col
+    else:
+        cardmarket_expr = f"{raw_col} * {eur_to_gbp}"
+        tcgplayer_expr = f"{raw_col} * {usd_to_gbp}"
+
+    return f"""
+    CASE
+      WHEN {source_col} LIKE 'Cardmarket%' THEN {cardmarket_expr}
+      WHEN {source_col} LIKE 'Last Cardmarket%' THEN {cardmarket_expr}
+      WHEN {source_col} LIKE 'TCGPlayer%' THEN {tcgplayer_expr}
+      WHEN {source_col} LIKE 'Last TCGPlayer%' THEN {tcgplayer_expr}
+      ELSE {raw_col}
+    END
+    """
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -180,32 +213,25 @@ def get_card_master(
     filters = []
 
     if series_name and series_name != "All":
-        safe_series = series_name.replace("'", "\\'")
-        filters.append(f"series_name = '{safe_series}'")
+        filters.append(f"series_name = '{_escape_sql(series_name)}'")
 
     if set_name and set_name != "All":
-        safe_set = set_name.replace("'", "\\'")
-        filters.append(f"set_name = '{safe_set}'")
+        filters.append(f"set_name = '{_escape_sql(set_name)}'")
 
     parsed = parse_smart_search(card_name_search or "")
 
     if parsed["exact_card_id"]:
-        safe_card_id = parsed["exact_card_id"].replace("'", "\\'")
-        filters.append(f"LOWER(card_id) = LOWER('{safe_card_id}')")
+        filters.append(f"LOWER(card_id) = LOWER('{_escape_sql(parsed['exact_card_id'])}')")
 
     elif parsed["set_text"] and parsed["local_id"]:
-        set_filter = _build_set_name_filter(parsed["set_text"])
-        safe_local_id = parsed["local_id"].replace("'", "\\'")
-        filters.append(set_filter)
-        filters.append(f"LOWER(local_id) = LOWER('{safe_local_id}')")
+        filters.append(_build_set_name_filter(parsed["set_text"]))
+        filters.append(f"LOWER(local_id) = LOWER('{_escape_sql(parsed['local_id'])}')")
 
     elif parsed["local_id"]:
-        safe_local_id = parsed["local_id"].replace("'", "\\'")
-        filters.append(f"LOWER(local_id) = LOWER('{safe_local_id}')")
+        filters.append(f"LOWER(local_id) = LOWER('{_escape_sql(parsed['local_id'])}')")
 
     elif parsed["name_text"]:
-        safe_name = parsed["name_text"].replace("'", "\\'")
-        filters.append(f"LOWER(name) LIKE LOWER('%{safe_name}%')")
+        filters.append(f"LOWER(name) LIKE LOWER('%{_escape_sql(parsed['name_text'])}%')")
 
     where_clause = ""
     if filters:
@@ -290,7 +316,7 @@ def get_card_master(
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_card_detail_by_id(card_id: str) -> pd.DataFrame:
-    safe_card_id = card_id.replace("'", "\\'")
+    safe_card_id = _escape_sql(card_id)
 
     sql = f"""
     SELECT
@@ -331,7 +357,7 @@ def get_card_detail_by_id(card_id: str) -> pd.DataFrame:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_card_price_history(card_id: str) -> pd.DataFrame:
-    safe_card_id = card_id.replace("'", "\\'")
+    safe_card_id = _escape_sql(card_id)
     eur_to_gbp = get_fx_rate("EUR", "GBP")
     eur_to_usd = get_fx_rate("EUR", "USD")
     usd_to_gbp = get_fx_rate("USD", "GBP")
@@ -393,11 +419,95 @@ def get_card_price_history(card_id: str) -> pd.DataFrame:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_card_latest_variant_prices(card_id: str) -> pd.DataFrame:
-    safe_card_id = card_id.replace("'", "\\'")
+    safe_card_id = _escape_sql(card_id)
     eur_to_gbp = get_fx_rate("EUR", "GBP")
     eur_to_usd = get_fx_rate("EUR", "USD")
     usd_to_gbp = get_fx_rate("USD", "GBP")
     usd_to_eur = get_fx_rate("USD", "EUR")
+
+    display_normal_eur = _display_price_case_sql(
+        "display_normal_price",
+        "display_normal_source",
+        "EUR",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+    display_normal_gbp = _display_price_case_sql(
+        "display_normal_price",
+        "display_normal_source",
+        "GBP",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+    display_normal_usd = _display_price_case_sql(
+        "display_normal_price",
+        "display_normal_source",
+        "USD",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+
+    display_holo_eur = _display_price_case_sql(
+        "display_holofoil_price",
+        "display_holofoil_source",
+        "EUR",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+    display_holo_gbp = _display_price_case_sql(
+        "display_holofoil_price",
+        "display_holofoil_source",
+        "GBP",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+    display_holo_usd = _display_price_case_sql(
+        "display_holofoil_price",
+        "display_holofoil_source",
+        "USD",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+
+    display_reverse_eur = _display_price_case_sql(
+        "display_reverse_holofoil_price",
+        "display_reverse_holofoil_source",
+        "EUR",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+    display_reverse_gbp = _display_price_case_sql(
+        "display_reverse_holofoil_price",
+        "display_reverse_holofoil_source",
+        "GBP",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
+    display_reverse_usd = _display_price_case_sql(
+        "display_reverse_holofoil_price",
+        "display_reverse_holofoil_source",
+        "USD",
+        eur_to_gbp,
+        eur_to_usd,
+        usd_to_gbp,
+        usd_to_eur,
+    )
 
     sql = f"""
     SELECT
@@ -414,6 +524,13 @@ def get_card_latest_variant_prices(card_id: str) -> pd.DataFrame:
         tcgplayer_holofoil_market_price,
         tcgplayer_reverse_holofoil_market_price,
 
+        display_normal_price,
+        display_normal_source,
+        display_holofoil_price,
+        display_holofoil_source,
+        display_reverse_holofoil_price,
+        display_reverse_holofoil_source,
+
         cardmarket_avg AS cardmarket_avg_display_eur,
         cardmarket_low AS cardmarket_low_display_eur,
         cardmarket_trend AS cardmarket_trend_display_eur,
@@ -423,6 +540,9 @@ def get_card_latest_variant_prices(card_id: str) -> pd.DataFrame:
         tcgplayer_normal_market_price * {usd_to_eur} AS tcgplayer_normal_market_price_display_eur,
         tcgplayer_holofoil_market_price * {usd_to_eur} AS tcgplayer_holofoil_market_price_display_eur,
         tcgplayer_reverse_holofoil_market_price * {usd_to_eur} AS tcgplayer_reverse_holofoil_market_price_display_eur,
+        {display_normal_eur} AS display_normal_price_display_eur,
+        {display_holo_eur} AS display_holofoil_price_display_eur,
+        {display_reverse_eur} AS display_reverse_holofoil_price_display_eur,
 
         cardmarket_avg * {eur_to_gbp} AS cardmarket_avg_display_gbp,
         cardmarket_low * {eur_to_gbp} AS cardmarket_low_display_gbp,
@@ -433,6 +553,9 @@ def get_card_latest_variant_prices(card_id: str) -> pd.DataFrame:
         tcgplayer_normal_market_price * {usd_to_gbp} AS tcgplayer_normal_market_price_display_gbp,
         tcgplayer_holofoil_market_price * {usd_to_gbp} AS tcgplayer_holofoil_market_price_display_gbp,
         tcgplayer_reverse_holofoil_market_price * {usd_to_gbp} AS tcgplayer_reverse_holofoil_market_price_display_gbp,
+        {display_normal_gbp} AS display_normal_price_display_gbp,
+        {display_holo_gbp} AS display_holofoil_price_display_gbp,
+        {display_reverse_gbp} AS display_reverse_holofoil_price_display_gbp,
 
         cardmarket_avg * {eur_to_usd} AS cardmarket_avg_display_usd,
         cardmarket_low * {eur_to_usd} AS cardmarket_low_display_usd,
@@ -442,11 +565,13 @@ def get_card_latest_variant_prices(card_id: str) -> pd.DataFrame:
         cardmarket_trend_holo * {eur_to_usd} AS cardmarket_trend_holo_display_usd,
         tcgplayer_normal_market_price AS tcgplayer_normal_market_price_display_usd,
         tcgplayer_holofoil_market_price AS tcgplayer_holofoil_market_price_display_usd,
-        tcgplayer_reverse_holofoil_market_price AS tcgplayer_reverse_holofoil_market_price_display_usd
+        tcgplayer_reverse_holofoil_market_price AS tcgplayer_reverse_holofoil_market_price_display_usd,
+        {display_normal_usd} AS display_normal_price_display_usd,
+        {display_holo_usd} AS display_holofoil_price_display_usd,
+        {display_reverse_usd} AS display_reverse_holofoil_price_display_usd
 
-    FROM `pokemon-pacey32-github.pokemonApp.card_price_history`
+    FROM `pokemon-pacey32-github.pokemondatafromapi.card_latest_price_vw`
     WHERE card_id = '{safe_card_id}'
-    ORDER BY snapshot_timestamp DESC
     LIMIT 1
     """
     df = run_query(sql)
