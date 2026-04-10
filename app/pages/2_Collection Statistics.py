@@ -96,52 +96,49 @@ def build_stats_base(cards_df: pd.DataFrame, user_df: pd.DataFrame, eur_to_displ
             df[col] = False
         df[col] = df[col].fillna(False).astype(bool)
 
-    # Ensure price columns exist and are numeric
+    # Ensure Cardmarket display price columns exist and are numeric
+    # Null prices should contribute 0 to totals
     price_cols = [
-        "tcgplayer_normal_market_price_display",
-        "tcgplayer_holofoil_market_price_display",
-        "tcgplayer_reverse_holofoil_market_price_display",
+        "cardmarket_trend_display",
+        "cardmarket_trend_holo_display",
     ]
 
     for col in price_cols:
         if col not in df.columns:
-            df[col] = pd.NA
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+            df[col] = 0
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
     def calc_total_possible_value(row):
-        vals = []
+        total = 0.0
 
-        if row.get("variant_normal", False) and pd.notnull(row.get("tcgplayer_normal_market_price_display")):
-            vals.append(float(row["tcgplayer_normal_market_price_display"]))
+        if row.get("variant_normal", False):
+            total += float(row.get("cardmarket_trend_display", 0) or 0)
 
-        if row.get("variant_holo", False) and pd.notnull(row.get("tcgplayer_holofoil_market_price_display")):
-            vals.append(float(row["tcgplayer_holofoil_market_price_display"]))
+        if row.get("variant_holo", False):
+            total += float(row.get("cardmarket_trend_holo_display", 0) or 0)
 
-        if row.get("variant_reverse", False) and pd.notnull(row.get("tcgplayer_reverse_holofoil_market_price_display")):
-            vals.append(float(row["tcgplayer_reverse_holofoil_market_price_display"]))
+        if row.get("variant_reverse", False):
+            total += float(row.get("cardmarket_trend_holo_display", 0) or 0)
 
-        return sum(vals)
+        return total
 
     def calc_owned_value(row):
         total = 0.0
 
-        if row.get("owned_normal", False) and pd.notnull(row.get("tcgplayer_normal_market_price_display")):
-            total += float(row["tcgplayer_normal_market_price_display"])
+        if row.get("owned_normal", False):
+            total += float(row.get("cardmarket_trend_display", 0) or 0)
 
-        if row.get("owned_holo", False) and pd.notnull(row.get("tcgplayer_holofoil_market_price_display")):
-            total += float(row["tcgplayer_holofoil_market_price_display"])
+        if row.get("owned_holo", False):
+            total += float(row.get("cardmarket_trend_holo_display", 0) or 0)
 
-        if row.get("owned_reverse", False) and pd.notnull(row.get("tcgplayer_reverse_holofoil_market_price_display")):
-            total += float(row["tcgplayer_reverse_holofoil_market_price_display"])
+        if row.get("owned_reverse", False):
+            total += float(row.get("cardmarket_trend_holo_display", 0) or 0)
 
         if row.get("owned_first_edition", False) or row.get("owned_w_promo", False):
-            promo_vals = []
-            for col in price_cols:
-                val = row.get(col)
-                if pd.notnull(val):
-                    promo_vals.append(float(val))
-            if promo_vals:
-                total += max(promo_vals)
+            total += max(
+                float(row.get("cardmarket_trend_display", 0) or 0),
+                float(row.get("cardmarket_trend_holo_display", 0) or 0),
+            )
 
         return total
 
