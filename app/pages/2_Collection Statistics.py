@@ -39,7 +39,6 @@ def build_stats_base(cards_df: pd.DataFrame, user_df: pd.DataFrame, eur_to_displ
     if user_df is None:
         user_df = pd.DataFrame()
 
-    # Mongo now stores ownership by variant, not a top-level owned field
     required_user_defaults = {
         "card_id": pd.NA,
         "owned_normal": False,
@@ -77,7 +76,6 @@ def build_stats_base(cards_df: pd.DataFrame, user_df: pd.DataFrame, eur_to_displ
             df[col] = False
         df[col] = df[col].fillna(False).astype(bool)
 
-    # Derive owned from any owned variant
     df["owned"] = (
         df["owned_normal"]
         | df["owned_holo"]
@@ -86,7 +84,6 @@ def build_stats_base(cards_df: pd.DataFrame, user_df: pd.DataFrame, eur_to_displ
         | df["owned_w_promo"]
     )
 
-    # Ensure variant flags exist
     for col in [
         "variant_normal",
         "variant_holo",
@@ -96,8 +93,6 @@ def build_stats_base(cards_df: pd.DataFrame, user_df: pd.DataFrame, eur_to_displ
             df[col] = False
         df[col] = df[col].fillna(False).astype(bool)
 
-    # Ensure Cardmarket display price columns exist and are numeric
-    # Null prices should contribute 0 to totals
     price_cols = [
         "cardmarket_trend_display",
         "cardmarket_trend_holo_display",
@@ -107,6 +102,11 @@ def build_stats_base(cards_df: pd.DataFrame, user_df: pd.DataFrame, eur_to_displ
         if col not in df.columns:
             df[col] = 0
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    if "release_date" in df.columns:
+        df["release_date"] = pd.to_datetime(df["release_date"], errors="coerce")
+    else:
+        df["release_date"] = pd.NaT
 
     def calc_total_possible_value(row):
         total = 0.0
@@ -157,6 +157,7 @@ def build_series_stats(df: pd.DataFrame) -> pd.DataFrame:
             owned_cards=("owned", "sum"),
             total_value=("value", "sum"),
             owned_value=("owned_value", "sum"),
+            release_date=("release_date", "min"),
         )
         .reset_index()
     )
@@ -220,9 +221,6 @@ def build_top_owned_table(owned_df: pd.DataFrame, symbol: str) -> pd.DataFrame:
     return display_df.rename(columns={"formatted_value": "Value"})
 
 
-# -------------------------
-# LOAD DATA
-# -------------------------
 cards_df = get_card_master(display_currency=display_currency)
 user_df = get_user_cards_df(user_id)
 
@@ -235,9 +233,6 @@ if user_df is None:
 
 df = build_stats_base(cards_df, user_df, eur_to_display)
 
-# -------------------------
-# TOP METRICS
-# -------------------------
 total_cards = len(df)
 owned_cards = int(df["owned"].sum()) if "owned" in df.columns else 0
 pct_complete = (owned_cards / total_cards * 100) if total_cards > 0 else 0
@@ -250,19 +245,24 @@ col3.metric("Collection Value", f"{symbol}{collection_value:,.0f}")
 
 st.markdown("---")
 
-# -------------------------
-# VIEW MODE
-# -------------------------
-view_mode = st.selectbox(
-    "Chart view",
-    ["% cards completion", "% value completion"],
-    index=0,
-    key="stats_view_mode"
-)
+control_col1, control_col2 = st.columns(2)
 
-# -------------------------
-# SERIES SUMMARY
-# -------------------------
+with control_col1:
+    view_mode = st.selectbox(
+        "Chart view",
+        ["% cards completion", "% value completion"],
+        index=0,
+        key="stats_view_mode"
+    )
+
+with control_col2:
+    chart_order = st.selectbox(
+        "Order bars by",
+        ["% complete", "Release date"],
+        index=0,
+        key="stats_chart_order"
+    )
+
 series_stats = build_series_stats(df)
 
 if view_mode == "% cards completion":
@@ -272,8 +272,18 @@ else:
     chart_col = "pct_value_completion"
     chart_title = "Series completion by value"
 
-series_stats = series_stats.sort_values(chart_col, ascending=True)
-series_chart_df = series_stats.tail(30).copy()
+if chart_order == "% complete":
+    series_chart_df = series_stats.sort_values(
+        by=[chart_col, "series_name"],
+        ascending=[True, True],
+        na_position="last"
+    ).copy()
+else:
+    series_chart_df = series_stats.sort_values(
+        by=["release_date", "series_name"],
+        ascending=[True, True],
+        na_position="last"
+    ).copy()
 
 fig_series = px.bar(
     series_chart_df,
@@ -281,7 +291,7 @@ fig_series = px.bar(
     y="series_name",
     orientation="h",
     text=series_chart_df[chart_col].round(1).astype(str) + "%",
-    custom_data=["series_name"],
+    custom_data=["series_name", "release_date"],
 )
 
 fig_series.update_traces(
@@ -292,7 +302,7 @@ fig_series.update_layout(
     title=chart_title,
     xaxis_title="Completion %",
     yaxis_title="Series",
-    height=min(900, max(450, len(series_chart_df) * 24)),
+    height=min(1400, max(450, len(series_chart_df) * 24)),
     margin=dict(l=20, r=20, t=50, b=20),
 )
 
@@ -324,17 +334,8 @@ with col_b:
         st.session_state["selected_series_for_stats"] = None
         st.rerun()
 
-# -------------------------
-# SET DRILLDOWN
-# -------------------------
 if selected_series:
     set_stats = build_set_stats(df, selected_series)
-
-    set_stats = set_stats.sort_values(
-        by=["release_date", "set_name"],
-        ascending=[True, True],
-        na_position="last"
-    )
 
     if view_mode == "% cards completion":
         drill_col = "pct_cards_completion"
@@ -343,7 +344,18 @@ if selected_series:
         drill_col = "pct_value_completion"
         drill_title = f"Set drilldown for {selected_series} by value"
 
-    set_chart_df = set_stats.sort_values(drill_col, ascending=True).copy()
+    if chart_order == "% complete":
+        set_chart_df = set_stats.sort_values(
+            by=[drill_col, "set_name"],
+            ascending=[True, True],
+            na_position="last"
+        ).copy()
+    else:
+        set_chart_df = set_stats.sort_values(
+            by=["release_date", "set_name"],
+            ascending=[True, True],
+            na_position="last"
+        ).copy()
 
     fig_sets = px.bar(
         set_chart_df,
@@ -351,6 +363,7 @@ if selected_series:
         y="set_name",
         orientation="h",
         text=set_chart_df[drill_col].round(1).astype(str) + "%",
+        custom_data=["release_date"],
     )
 
     fig_sets.update_traces(
@@ -361,7 +374,7 @@ if selected_series:
         title=drill_title,
         xaxis_title="Completion %",
         yaxis_title="Set",
-        height=min(800, max(350, len(set_chart_df) * 24)),
+        height=min(1000, max(350, len(set_chart_df) * 24)),
         margin=dict(l=20, r=20, t=50, b=20),
     )
 
@@ -374,9 +387,6 @@ if selected_series:
 
 st.markdown("---")
 
-# -------------------------
-# TOP 10 OWNED CARDS
-# -------------------------
 st.markdown("### Top 10 owned cards")
 
 owned_df = df[df["owned"] == True].copy()

@@ -258,6 +258,30 @@ def get_card_master(
         tcgplayer_holo_expr = f"tcgplayer_holofoil_market_price * {usd_to_gbp}"
         tcgplayer_reverse_expr = f"tcgplayer_reverse_holofoil_market_price * {usd_to_gbp}"
 
+    xy_black_star_order_expr = """
+        CASE
+            WHEN set_name = 'XY Black Star Promos' THEN
+                CASE
+                    WHEN REGEXP_CONTAINS(UPPER(local_id), r'^XY\d+[A-Z]?$') THEN 0
+                    ELSE 1
+                END
+            ELSE
+                CASE
+                    WHEN SAFE_CAST(local_id AS INT64) IS NULL THEN 1
+                    ELSE 0
+                END
+        END
+    """
+
+    xy_black_star_numeric_expr = """
+        CASE
+            WHEN set_name = 'XY Black Star Promos' THEN
+                SAFE_CAST(REGEXP_EXTRACT(UPPER(local_id), r'^XY(\d+)[A-Z]?$') AS INT64)
+            ELSE
+                SAFE_CAST(local_id AS INT64)
+        END
+    """
+
     sql = f"""
     SELECT
         card_id,
@@ -297,8 +321,8 @@ def get_card_master(
     ORDER BY
         release_date,
         set_name,
-        CASE WHEN SAFE_CAST(local_id AS INT64) IS NULL THEN 1 ELSE 0 END,
-        SAFE_CAST(local_id AS INT64),
+        {xy_black_star_order_expr},
+        {xy_black_star_numeric_expr},
         local_id
     """
 

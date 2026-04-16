@@ -35,10 +35,19 @@ if "page_number" not in st.session_state:
 if "last_filter_key" not in st.session_state:
     st.session_state.last_filter_key = None
 
+if "show_card_images" not in st.session_state:
+    st.session_state.show_card_images = True
+
 user_id = st.session_state.user["user_id"]
 
 st.title("Collection Entry")
 st.write(f"Logged in as **{st.session_state.user['username']}**")
+
+st.toggle(
+    "Show pictures",
+    key="show_card_images",
+    help="Turn card pictures on or off to make the list more compact.",
+)
 
 
 def build_card_image_url(image_url):
@@ -268,7 +277,9 @@ with st.sidebar:
     card_name_search = st.text_input("Search cards")
     row_limit = st.selectbox("Rows per page", [25, 50, 100, 250, 500], index=1)
 
-    filter_key = f"{selected_series}_{selected_set}_{card_name_search}_{row_limit}"
+    filter_key = (
+        f"{selected_series}_{selected_set}_{card_name_search}_{row_limit}_{st.session_state.show_card_images}"
+    )
     if st.session_state.last_filter_key != filter_key:
         st.session_state.page_number = 1
         st.session_state.last_filter_key = filter_key
@@ -339,6 +350,8 @@ with nav3:
             st.session_state.page_number += 1
             st.rerun()
 
+show_card_images = st.session_state.show_card_images
+
 for _, row in df.iterrows():
     card_id = row["card_id"]
     is_selected = card_id == st.session_state.selected_card_id
@@ -372,75 +385,140 @@ for _, row in df.iterrows():
     else:
         st.markdown('<div class="card-shell">', unsafe_allow_html=True)
 
-    col1, col2, col3, col4 = st.columns([1.1, 4.2, 1.6, 1.2])
+    if show_card_images:
+        col1, col2, col3, col4 = st.columns([1.1, 4.2, 1.6, 1.2])
 
-    with col1:
-        final_image_url = build_card_image_url(row["image_url"])
-        if final_image_url:
-            st.image(final_image_url, width=110)
-        else:
-            st.write("No image")
+        with col1:
+            final_image_url = build_card_image_url(row["image_url"])
+            if final_image_url:
+                st.image(final_image_url, width=110)
+            else:
+                st.write("No image")
 
-    with col2:
-        series_text = row["series_name"] if row["series_name"] else "Unknown Series"
-        set_text = row["set_name"] if row["set_name"] else "Unknown Set"
-        st.markdown(
-            f"""
-            <div style="font-size: 1.05rem; line-height: 1.8;">
-                <div style="font-size: 1.35rem; font-weight: 700;">{row['name']}</div>
-                <div>{series_text} | {set_text} | #{row['local_id']}</div>
-                <div>Rarity: {row['rarity']} | {value_text}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with col3:
-        variant_updates = current_variants.copy()
-
-        if row.get("variant_normal"):
-            variant_updates["owned_normal"] = st.checkbox(
-                "Normal",
-                value=current_variants["owned_normal"],
-                key=f"normal_{card_id}"
+        with col2:
+            series_text = row["series_name"] if row["series_name"] else "Unknown Series"
+            set_text = row["set_name"] if row["set_name"] else "Unknown Set"
+            st.markdown(
+                f"""
+                <div style="font-size: 1.05rem; line-height: 1.8;">
+                    <div style="font-size: 1.35rem; font-weight: 700;">{row['name']}</div>
+                    <div>{series_text} | {set_text} | #{row['local_id']}</div>
+                    <div>Rarity: {row['rarity']} | {value_text}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
 
-        if row.get("variant_holo"):
-            variant_updates["owned_holo"] = st.checkbox(
-                "Holo",
-                value=current_variants["owned_holo"],
-                key=f"holo_{card_id}"
+        with col3:
+            variant_updates = current_variants.copy()
+
+            if row.get("variant_normal"):
+                variant_updates["owned_normal"] = st.checkbox(
+                    "Normal",
+                    value=current_variants["owned_normal"],
+                    key=f"normal_{card_id}"
+                )
+
+            if row.get("variant_holo"):
+                variant_updates["owned_holo"] = st.checkbox(
+                    "Holo",
+                    value=current_variants["owned_holo"],
+                    key=f"holo_{card_id}"
+                )
+
+            if row.get("variant_reverse"):
+                variant_updates["owned_reverse"] = st.checkbox(
+                    "Reverse",
+                    value=current_variants["owned_reverse"],
+                    key=f"reverse_{card_id}"
+                )
+
+            if row.get("variant_first_edition"):
+                variant_updates["owned_first_edition"] = st.checkbox(
+                    "1st Ed",
+                    value=current_variants["owned_first_edition"],
+                    key=f"firsted_{card_id}"
+                )
+
+            if row.get("variant_w_promo"):
+                variant_updates["owned_w_promo"] = st.checkbox(
+                    "Promo",
+                    value=current_variants["owned_w_promo"],
+                    key=f"wpromo_{card_id}"
+                )
+
+            if variant_updates != current_variants:
+                upsert_user_card_variants(user_id, card_id, variant_updates)
+                st.rerun()
+
+        with col4:
+            if st.button("View details", key=f"detail_{card_id}"):
+                st.session_state.selected_card_id = card_id
+                st.rerun()
+
+    else:
+        col2, col3, col4 = st.columns([5.4, 1.8, 1.3])
+
+        with col2:
+            series_text = row["series_name"] if row["series_name"] else "Unknown Series"
+            set_text = row["set_name"] if row["set_name"] else "Unknown Set"
+            st.markdown(
+                f"""
+                <div style="font-size: 1.00rem; line-height: 1.7;">
+                    <div style="font-size: 1.25rem; font-weight: 700;">{row['name']}</div>
+                    <div>{series_text} | {set_text} | #{row['local_id']}</div>
+                    <div>Rarity: {row['rarity']} | {value_text}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
 
-        if row.get("variant_reverse"):
-            variant_updates["owned_reverse"] = st.checkbox(
-                "Reverse",
-                value=current_variants["owned_reverse"],
-                key=f"reverse_{card_id}"
-            )
+        with col3:
+            variant_updates = current_variants.copy()
 
-        if row.get("variant_first_edition"):
-            variant_updates["owned_first_edition"] = st.checkbox(
-                "1st Ed",
-                value=current_variants["owned_first_edition"],
-                key=f"firsted_{card_id}"
-            )
+            if row.get("variant_normal"):
+                variant_updates["owned_normal"] = st.checkbox(
+                    "Normal",
+                    value=current_variants["owned_normal"],
+                    key=f"normal_{card_id}"
+                )
 
-        if row.get("variant_w_promo"):
-            variant_updates["owned_w_promo"] = st.checkbox(
-                "Promo",
-                value=current_variants["owned_w_promo"],
-                key=f"wpromo_{card_id}"
-            )
+            if row.get("variant_holo"):
+                variant_updates["owned_holo"] = st.checkbox(
+                    "Holo",
+                    value=current_variants["owned_holo"],
+                    key=f"holo_{card_id}"
+                )
 
-        if variant_updates != current_variants:
-            upsert_user_card_variants(user_id, card_id, variant_updates)
-            st.rerun()
+            if row.get("variant_reverse"):
+                variant_updates["owned_reverse"] = st.checkbox(
+                    "Reverse",
+                    value=current_variants["owned_reverse"],
+                    key=f"reverse_{card_id}"
+                )
 
-    with col4:
-        if st.button("View details", key=f"detail_{card_id}"):
-            st.session_state.selected_card_id = card_id
-            st.rerun()
+            if row.get("variant_first_edition"):
+                variant_updates["owned_first_edition"] = st.checkbox(
+                    "1st Ed",
+                    value=current_variants["owned_first_edition"],
+                    key=f"firsted_{card_id}"
+                )
+
+            if row.get("variant_w_promo"):
+                variant_updates["owned_w_promo"] = st.checkbox(
+                    "Promo",
+                    value=current_variants["owned_w_promo"],
+                    key=f"wpromo_{card_id}"
+                )
+
+            if variant_updates != current_variants:
+                upsert_user_card_variants(user_id, card_id, variant_updates)
+                st.rerun()
+
+        with col4:
+            if st.button("View details", key=f"detail_{card_id}"):
+                st.session_state.selected_card_id = card_id
+                st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
 
