@@ -76,6 +76,33 @@ def get_set_list(series_name: str | None = None) -> list:
     return df["set_name"].dropna().tolist()
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_set_images(set_name: str) -> dict:
+    if not set_name or set_name == "All":
+        return {"logo_url": None, "symbol_url": None}
+
+    safe_set = _escape_sql(set_name)
+
+    sql = f"""
+    SELECT logo_url, symbol_url
+    FROM `pokemon-pacey32-github.pokemonApp.set_detail_vw`
+    WHERE set_name = '{safe_set}'
+    LIMIT 1
+    """
+    df = run_query(sql)
+
+    if df.empty:
+        return {"logo_url": None, "symbol_url": None}
+
+    logo_url = df.iloc[0].get("logo_url")
+    symbol_url = df.iloc[0].get("symbol_url")
+
+    return {
+        "logo_url": str(logo_url).strip() if pd.notnull(logo_url) else None,
+        "symbol_url": str(symbol_url).strip() if pd.notnull(symbol_url) else None,
+    }
+
+
 def parse_smart_search(search_text: str) -> dict:
     if not search_text:
         return {
@@ -262,7 +289,7 @@ def get_card_master(
         CASE
             WHEN set_name = 'XY Black Star Promos' THEN
                 CASE
-                    WHEN REGEXP_CONTAINS(UPPER(local_id), r'^XY\d+[A-Z]?$') THEN 0
+                    WHEN REGEXP_CONTAINS(UPPER(local_id), r'^XY\\d+[A-Z]?$') THEN 0
                     ELSE 1
                 END
             ELSE
@@ -276,7 +303,7 @@ def get_card_master(
     xy_black_star_numeric_expr = """
         CASE
             WHEN set_name = 'XY Black Star Promos' THEN
-                SAFE_CAST(REGEXP_EXTRACT(UPPER(local_id), r'^XY(\d+)[A-Z]?$') AS INT64)
+                SAFE_CAST(REGEXP_EXTRACT(UPPER(local_id), r'^XY(\\d+)[A-Z]?$') AS INT64)
             ELSE
                 SAFE_CAST(local_id AS INT64)
         END

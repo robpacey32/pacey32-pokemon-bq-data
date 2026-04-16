@@ -6,6 +6,7 @@ from ui_auth import render_login_portal, restore_login_from_storage
 from db_bigquery import (
     get_series_list,
     get_set_list,
+    get_set_images,
     get_card_master,
     get_card_detail_by_id,
     get_card_price_history,
@@ -57,6 +58,18 @@ def build_card_image_url(image_url):
     if image_url.endswith((".png", ".jpg", ".jpeg", ".webp")):
         return image_url
     return f"{image_url}/low.webp"
+
+
+def normalize_set_asset_url(url):
+    if not url:
+        return None
+
+    url = str(url).strip()
+
+    if url.endswith((".png", ".jpg", ".jpeg", ".webp")):
+        return url
+
+    return f"{url}.webp"
 
 
 def format_money(value, symbol):
@@ -329,7 +342,11 @@ user_variant_map = get_user_card_variants(user_id)
 start_row = offset + 1 if len(df) > 0 else 0
 end_row = offset + len(df)
 
-nav1, nav2, nav3 = st.columns([1, 2, 1])
+set_images = get_set_images(selected_set)
+logo_url = normalize_set_asset_url(set_images.get("logo_url"))
+symbol_url = normalize_set_asset_url(set_images.get("symbol_url"))
+
+nav1, nav2, nav3 = st.columns([1, 4, 1])
 
 with nav1:
     if st.button("◀ Prev", key="prev_page_main"):
@@ -338,11 +355,42 @@ with nav1:
             st.rerun()
 
 with nav2:
-    st.markdown(
-        f"<div style='text-align:center; font-size: 1.5rem; font-weight: 700;'>Showing cards {start_row}–{end_row}</div>"
-        f"<div style='text-align:center;'>Page {st.session_state.page_number}</div>",
-        unsafe_allow_html=True
-    )
+    col_l, col_mid, col_r = st.columns([1.2, 3, 1.2])
+
+    with col_l:
+        if logo_url:
+            st.markdown(
+                f"""
+                <div style="display:flex; justify-content:center; align-items:center; height:100%;">
+                    <img src="{logo_url}" style="max-width:140px; max-height:70px;" />
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    with col_mid:
+        title_text = selected_set if selected_set != "All" else "All Sets"
+        st.markdown(
+            f"""
+            <div style='text-align:center; padding-top: 8px;'>
+                <div style='font-size: 1.6rem; font-weight: 700;'>{title_text}</div>
+                <div style='font-size: 1rem;'>Showing cards {start_row}–{end_row}</div>
+                <div style='font-size: 0.9rem;'>Page {st.session_state.page_number}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with col_r:
+        if symbol_url:
+            st.markdown(
+                f"""
+                <div style="display:flex; justify-content:center; align-items:center; height:100%;">
+                    <img src="{symbol_url}" style="max-width:80px; max-height:70px;" />
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 with nav3:
     if st.button("Next ▶", key="next_page_main"):

@@ -15,3 +15,5 @@ streamlit-local-storage
 python-dotenv
 dnspython
 resend
+google-cloud-bigquery-storage
+pyarrow
